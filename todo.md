@@ -103,7 +103,8 @@
 - [x] API 사용량 검증 (1 message = 1 call, 페이지 AI 호출 0 테스트)
 - [x] Multi-agent 코드 리뷰 (보안·정확성 리뷰 10건 + spec 준수 감사 20건) → 아래 Review fixes
 - [x] Production smoke test (`scripts/smoke_test.py`: 27/27, 실제 Firestore, 테스트 계정 정리)
-- [x] Headless browser UI 검증 (`scripts/ui_check.py`: 360/375/390/430, 44/44)
+- [x] Headless browser UI 검증 (`scripts/ui_check.py`: 360/375/390/430, local 44/44)
+- [x] Production 재검증 (`9703c49`): smoke 27/27 · headless UI 44/44 · 테스트 계정 정리
 
 ## Review fixes
 - [x] Rate limiter: 무제한 key 생성(메모리 DoS) · prune window 혼용 · IP 먼저 검사
