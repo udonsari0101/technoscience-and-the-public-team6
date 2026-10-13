@@ -1,0 +1,28 @@
+{# expects `p` (philosopher) and `heading` ('h1' | 'h2') #}
+<div class="ph-detail ph-{{ p.id }}">
+  <div class="ph-detail-head">
+    <img class="avatar avatar-xl" src="{{ url_for('static', filename=p.avatar) }}" alt="" width="96" height="96">
+    <{{ heading }} id="ph-title-{{ p.id }}">{{ p.name }}</{{ heading }}>
+    <p class="muted">{{ p.era }}</p>
+    <p class="ph-detail-tagline">{{ p.tagline }}</p>
+    <div class="chips" aria-label="잘 맞는 주제">
+      {% for t in p.topics %}<span class="chip">{{ t }}</span>{% endfor %}
+    </div>
+  </div>
+  <section class="ph-block">
+    <h3>이렇게 고민을 바라봐요</h3>
+    <p>{{ p.lens }}</p>
+  </section>
+  <section class="ph-block">
+    <h3>이런 고민과 잘 맞아요</h3>
+    <ul class="ph-list">
+      {% for item in p.good_for %}<li>{{ item }}</li>{% endfor %}
+    </ul>
+  </section>
+  <section class="ph-block">
+    <h3>이런 질문을 던져요</h3>
+    <ul class="ph-quote-list">
+      {% for q in p.question_style %}<li>{{ q }}</li>{% endfor %}
+    </ul>
+  </section>
+</div>

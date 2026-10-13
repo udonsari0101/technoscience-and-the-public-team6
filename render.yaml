@@ -27,12 +27,15 @@ services:
         generateValue: true
       - key: FIREBASE_CREDENTIALS_PATH
         value: /etc/secrets/firebase-service-account.json
+      # AI_MODE / ANTHROPIC_MODEL are owned by the Render dashboard after the
+      # first Blueprint sync (sync: false), so switching to AI_MODE=anthropic
+      # there is never reverted by a later push. Initial value: AI_MODE=mock.
       - key: AI_MODE
-        value: mock
+        sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: ANTHROPIC_MODEL
-        value: claude-haiku-5-5
+        sync: false
       - key: CONTROLLER_VERSION
         value: v1
       - key: MAX_CONTEXT_MESSAGES

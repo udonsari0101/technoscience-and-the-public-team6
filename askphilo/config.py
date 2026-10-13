@@ -40,6 +40,14 @@ def _bool(env, name, default):
     return raw in ("1", "true", "yes", "on")
 
 
+EFFORTS = ("low", "medium", "high", "xhigh", "max")
+
+
+def _effort(value: str) -> str:
+    value = value.lower()
+    return value if value in EFFORTS else "low"
+
+
 def resolve_credentials_path(raw_path: str) -> Path | None:
     """Resolve FIREBASE_CREDENTIALS_PATH relative to the project root."""
     if not raw_path:
@@ -83,7 +91,15 @@ def load_config(env=None) -> dict:
         "DATA_BACKEND": data_backend,
         "AI_MODE": ai_mode,
         "ANTHROPIC_API_KEY": _str(env, "ANTHROPIC_API_KEY", ""),
-        "ANTHROPIC_MODEL": _str(env, "ANTHROPIC_MODEL", "claude-haiku-5-5"),
+        "ANTHROPIC_MODEL": _str(env, "ANTHROPIC_MODEL", "claude-opus-5-5"),
+        # Optional separate model for the rare context-summary call.
+        "ANTHROPIC_SUMMARY_MODEL": _str(env, "ANTHROPIC_SUMMARY_MODEL", ""),
+        "ANTHROPIC_EFFORT": _effort(_str(env, "ANTHROPIC_EFFORT", "low")),
+        # Extra max_tokens for models whose thinking cannot be switched off.
+        "ANTHROPIC_THINKING_HEADROOM_TOKENS": _int(env, "ANTHROPIC_THINKING_HEADROOM_TOKENS", 1024),
+        "ANTHROPIC_TIMEOUT_SECONDS": _int(env, "ANTHROPIC_TIMEOUT_SECONDS", 45, minimum=5),
+        "ANTHROPIC_PROMPT_CACHE": _bool(env, "ANTHROPIC_PROMPT_CACHE", True),
+        "ANTHROPIC_REFUSAL_FALLBACK": _bool(env, "ANTHROPIC_REFUSAL_FALLBACK", True),
         "CONTROLLER_VERSION": _str(env, "CONTROLLER_VERSION", "v1"),
         "CONTROLLER_ENABLED": _bool(env, "CONTROLLER_ENABLED", True),
         "MAX_CONTEXT_MESSAGES": _int(env, "MAX_CONTEXT_MESSAGES", 10, minimum=2),
@@ -91,7 +107,10 @@ def load_config(env=None) -> dict:
         "SOFT_CONVERSATION_MESSAGE_LIMIT": _int(env, "SOFT_CONVERSATION_MESSAGE_LIMIT", 150, minimum=10),
         "HARD_CONVERSATION_MESSAGE_LIMIT": _int(env, "HARD_CONVERSATION_MESSAGE_LIMIT", 300, minimum=20),
         "CONTEXT_SUMMARY_TRIGGER_MESSAGES": _int(env, "CONTEXT_SUMMARY_TRIGGER_MESSAGES", 20, minimum=4),
-        "MOCK_AI_DELAY_MS": _int(env, "MOCK_AI_DELAY_MS", 0 if is_production else 500),
+        "SUMMARY_MAX_OUTPUT_TOKENS": _int(env, "SUMMARY_MAX_OUTPUT_TOKENS", 600, minimum=100),
+        "MAX_USER_MESSAGE_CHARS": _int(env, "MAX_USER_MESSAGE_CHARS", 2000, minimum=100),
+        "CHAT_MESSAGES_PER_MINUTE": _int(env, "CHAT_MESSAGES_PER_MINUTE", 12, minimum=1),
+        "MOCK_AI_DELAY_MS": _int(env, "MOCK_AI_DELAY_MS", 500),
         "ENABLE_DEV_ROUTES": _bool(env, "ENABLE_DEV_ROUTES", not is_production),
         # Flask / session hardening
         "SESSION_COOKIE_NAME": "askphilo_session",

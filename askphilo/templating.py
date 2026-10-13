@@ -38,6 +38,15 @@ def relative_time(value: datetime | None, now: datetime | None = None) -> str:
     return f"{local.year}. {local.month}. {local.day}."
 
 
+def josa_wa(word: str) -> str:
+    """'플라톤과' / '니체와': pick the particle from the final syllable's batchim."""
+    word = word or ""
+    last = word[-1:] or " "
+    code = ord(last) - 0xAC00
+    has_batchim = 0 <= code <= 11171 and code % 28 != 0
+    return f"{word}{'과' if has_batchim else '와'}"
+
+
 def iso_time(value: datetime | None) -> str:
     return _as_utc(value).isoformat() if isinstance(value, datetime) else ""
 
@@ -45,6 +54,7 @@ def iso_time(value: datetime | None) -> str:
 def init_app(app: Flask) -> None:
     app.jinja_env.filters["relative_time"] = relative_time
     app.jinja_env.filters["iso_time"] = iso_time
+    app.jinja_env.filters["josa_wa"] = josa_wa
 
     @app.context_processor
     def _inject():

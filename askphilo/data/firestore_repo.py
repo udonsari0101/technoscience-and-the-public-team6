@@ -282,6 +282,15 @@ class FirestoreRepository(Repository):
                     return  # conversation deleted meanwhile
                 raise
 
+    @_guard
+    def set_conversation_fields(self, user_id, conversation_id, fields):
+        try:
+            self._conv_ref(user_id, conversation_id).update(dict(fields))
+        except Exception as exc:
+            if type(exc).__name__ == "NotFound":
+                return
+            raise
+
     # ---- user memory -----------------------------------------------------------------
     @_guard
     def get_user_memory(self, user_id):

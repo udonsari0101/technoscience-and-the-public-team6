@@ -142,6 +142,10 @@ class Repository:
     def add_usage(self, user_id: str, conversation_id: str, increments: dict) -> None:
         raise NotImplementedError
 
+    def set_conversation_fields(self, user_id: str, conversation_id: str, fields: dict) -> None:
+        """Plain field update (no-op if the conversation no longer exists)."""
+        raise NotImplementedError
+
     # ---- user long-term memory -----------------------------------------
     def get_user_memory(self, user_id: str) -> dict | None:
         raise NotImplementedError

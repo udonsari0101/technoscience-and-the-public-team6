@@ -61,6 +61,14 @@ def create_app(overrides: dict | None = None) -> Flask:
     app.register_blueprint(auth_bp)
     app.register_blueprint(pages_bp)
     app.register_blueprint(chat_bp)
+    if app.config["ENABLE_DEV_ROUTES"]:
+        from .views.dev import bp as dev_bp
+
+        app.register_blueprint(dev_bp)
+
+    from . import cli
+
+    cli.init_app(app)
 
     if app.config["SECRET_KEY_GENERATED"] and app.config["IS_PRODUCTION"]:
         log.warning("SECRET_KEY is not set; using an ephemeral key.")

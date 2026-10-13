@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, brand %}
+{% block title %}{{ (conversation.title if conversation and conversation.title else (p.name|josa_wa) ~ ' 상담') }} · AskPhilo{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('chat.philosophers_stylesheet') }}">{% endblock %}
+{% block body_class %}chat-page{% endblock %}
+{% block body %}
+<div class="chat-layout ph-{{ p.id }}">
+  <aside class="chat-sidebar" aria-label="최근 대화">
+    <div class="chat-sidebar-head">
+      {{ brand() }}
+      <a class="icon-btn" href="{{ url_for('pages.settings') }}" aria-label="설정">{{ icon('settings') }}</a>
+    </div>
+    <a class="btn btn-secondary btn-sm chat-sidebar-new" href="{{ url_for('chat.new') }}">{{ icon('plus') }} 새 상담</a>
+    <ul class="chat-sidebar-list">
+      {% for c in sidebar['items'] %}
+      <li class="conv-item">
+        <a class="conv-link" href="{{ url_for('chat.conversation', conversation_id=c.id) }}" {% if c.id == sidebar['active'] %}aria-current="page"{% endif %}>
+          <img class="avatar avatar-sm" src="{{ url_for('static', filename='img/philosophers/' ~ c.philosopher_id ~ '.svg') }}" alt="" width="36" height="36">
+          <span class="conv-body">
+            <span class="conv-title">{{ c.title or '새 상담' }}</span>
+            <span class="conv-sub">{{ c.philosopher_name }} · {{ c.updated_at|relative_time }}</span>
+          </span>
+        </a>
+      </li>
+      {% else %}
+      <li class="muted chat-sidebar-empty">아직 대화가 없어요.</li>
+      {% endfor %}
+    </ul>
+  </aside>
+
+  <main id="main" class="chat-main"
+        data-chat
+        data-conversation-id="{{ conversation.id if conversation else '' }}"
+        data-philosopher-id="{{ p.id }}"
+        data-oldest-index="{{ messages[0]['index'] if messages else 0 }}"
+        data-max-chars="{{ max_chars }}">
+    <header class="chat-header">
+      <a class="icon-btn chat-back" href="{{ url_for('pages.home') }}" aria-label="홈으로">{{ icon('back') }}</a>
+      <div class="chat-header-info">
+        <img class="avatar avatar-sm" src="{{ url_for('static', filename=p.avatar) }}" alt="" width="36" height="36">
+        <div class="chat-header-text">
+          <h1 class="chat-header-name">{{ p.name }}</h1>
+          <p class="chat-header-tagline">{{ p.tagline }}</p>
+        </div>
+      </div>
+      <div class="menu-wrap">
+        <button type="button" class="icon-btn" data-menu-toggle aria-haspopup="true" aria-expanded="false" aria-controls="chat-menu" aria-label="더보기">{{ icon('more') }}</button>
+        <div class="menu" id="chat-menu" data-menu hidden>
+          <a href="{{ url_for('chat.philosopher', philosopher_id=p.id) }}" data-dialog-open="sheet-{{ p.id }}">철학자 소개</a>
+          <a href="{{ url_for('chat.new') }}">새 상담 시작</a>
+          {% if conversation %}
+          <a class="danger-text" href="{{ url_for('chat.delete', conversation_id=conversation.id) }}" data-dialog-open="delete-dialog">대화 삭제</a>
+          {% endif %}
+        </div>
+      </div>
+    </header>
+
+    <div class="chat-scroll" id="chat-scroll">
+      <div class="chat-thread" id="thread" role="log" aria-live="polite" aria-relevant="additions" aria-label="대화 내용">
+        {% if has_more %}
+        <button type="button" class="btn btn-ghost btn-sm older-btn" data-load-older>이전 대화 보기</button>
+        {% endif %}
+        {% if not messages %}
+        <div class="msg msg-assistant" data-static>
+          <img class="avatar avatar-sm" src="{{ url_for('static', filename=p.avatar) }}" alt="" width="36" height="36">
+          <div class="bubble">{{ p.greeting }}</div>
+        </div>
+        <div class="starters" data-starters>
+          <p class="starters-label">이렇게 시작해 볼 수 있어요</p>
+          {% for s in p.starter_prompts %}<button type="button" class="starter" data-starter>{{ s }}</button>{% endfor %}
+        </div>
+        {% endif %}
+        {% for m in messages %}
+        <div class="msg msg-{{ m.role }}" data-index="{{ m['index'] }}">
+          {% if m.role == 'assistant' %}<img class="avatar avatar-sm" src="{{ url_for('static', filename=p.avatar) }}" alt="" width="36" height="36">{% endif %}
+          <div class="bubble"><span class="sr-only">{{ '나: ' if m.role == 'user' else p.name ~ ': ' }}</span>{{ m.content }}</div>
+        </div>
+        {% endfor %}
+        {% if pending %}
+        <div class="msg-error" data-pending>
+          <span>답변을 가져오지 못했어요.</span>
+          <button type="button" class="btn btn-secondary" data-retry>{{ icon('refresh') }} 다시 시도</button>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="composer">
+      {% if status.hard_limit_reached %}
+      <div class="composer-locked">
+        <p>{{ status.notice }}</p>
+        <a class="btn btn-primary btn-block" href="{{ url_for('chat.new') }}">새 상담 시작</a>
+      </div>
+      {% else %}
+      <p class="chat-notice composer-notice" data-limit-notice {% if not status.notice %}hidden{% endif %}>
+        {{ status.notice or '' }} <a href="{{ url_for('chat.new') }}">새 상담 시작</a>
+      </p>
+      <form class="composer-inner" data-composer novalidate>
+        <label class="sr-only" for="composer-input">메시지</label>
+        <textarea id="composer-input" name="content" rows="1" maxlength="{{ max_chars }}"
+                  placeholder="편하게 이야기해 주세요" enterkeyhint="send" autocomplete="off"></textarea>
+        <button type="submit" class="send-btn" aria-label="보내기" disabled>{{ icon('send') }}</button>
+      </form>
+      <p class="composer-hint">Enter로 보내기 · Shift + Enter로 줄바꿈</p>
+      {% endif %}
+    </div>
+  </main>
+</div>
+
+<dialog class="sheet" id="sheet-{{ p.id }}" aria-labelledby="ph-title-{{ p.id }}">
+  <div class="sheet-handle" aria-hidden="true"></div>
+  <button type="button" class="icon-btn sheet-close" data-dialog-close aria-label="닫기">{{ icon('close') }}</button>
+  <div class="sheet-body">
+    {% with heading='h2' %}{% include "_philosopher_detail.html" %}{% endwith %}
+  </div>
+</dialog>
+
+{% if conversation %}
+<dialog class="dialog" id="delete-dialog" aria-labelledby="delete-title">
+  <h2 id="delete-title">이 대화를 삭제할까요?</h2>
+  <p>삭제한 대화는 다시 볼 수 없어요.</p>
+  <form class="dialog-actions" method="post" action="{{ url_for('chat.delete', conversation_id=conversation.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="button" class="btn btn-secondary" data-dialog-close>취소</button>
+    <button type="submit" class="btn btn-danger">삭제</button>
+  </form>
+</dialog>
+{% endif %}
+
+<template id="tpl-assistant-avatar"><img class="avatar avatar-sm" src="{{ url_for('static', filename=p.avatar) }}" alt="" width="36" height="36"></template>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/chat.js') }}" defer></script>{% endblock %}

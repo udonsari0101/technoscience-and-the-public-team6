@@ -167,6 +167,12 @@ class MemoryRepository(Repository):
             if conv is not None:
                 self._add_usage(conv, increments)
 
+    def set_conversation_fields(self, user_id, conversation_id, fields):
+        with self._lock:
+            conv = self.conversations.get(user_id, {}).get(conversation_id)
+            if conv is not None:
+                conv.update(copy.deepcopy(fields))
+
     @staticmethod
     def _add_usage(conv, increments):
         if not increments:

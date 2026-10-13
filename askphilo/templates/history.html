@@ -1,17 +1,46 @@
 {% extends "base.html" %}
-{% from "_macros.html" import back_link %}
+{% from "_macros.html" import back_link, icon %}
 {% block title %}대화 기록 · AskPhilo{% endblock %}
 {% block body %}
 <header class="topbar">
   {{ back_link(url_for('pages.home'), '홈으로') }}
   <h1 class="topbar-title">대화 기록</h1>
-  <span class="icon-btn-spacer" aria-hidden="true"></span>
+  <a class="icon-btn" href="{{ url_for('chat.new') }}" aria-label="새 상담 시작">{{ icon('plus') }}</a>
 </header>
 <main id="main" class="page page-enter">
   {% if conversations %}
   <ul class="conv-list">
-    {% for c in conversations %}{% include "_conversation_item.html" %}{% endfor %}
+    {% for c in conversations %}
+    <li class="conv-item">
+      <a class="conv-link" href="{{ url_for('chat.conversation', conversation_id=c.id) }}">
+        <img class="avatar avatar-md" src="{{ url_for('static', filename='img/philosophers/' ~ c.philosopher_id ~ '.svg') }}" alt="" width="44" height="44">
+        <span class="conv-body">
+          <span class="conv-top">
+            <span class="conv-title">{{ c.title or '새 상담' }}</span>
+            <time class="conv-time" datetime="{{ c.updated_at|iso_time }}">{{ c.updated_at|relative_time }}</time>
+          </span>
+          <span class="conv-sub">{{ c.philosopher_name }} · {{ c.last_message_preview or '아직 대화가 없어요' }}</span>
+        </span>
+      </a>
+      <a class="icon-btn conv-delete" href="{{ url_for('chat.delete', conversation_id=c.id) }}"
+         data-dialog-open="delete-{{ c.id }}" aria-label="{{ c.title or '새 상담' }} 삭제">{{ icon('trash') }}</a>
+    </li>
+    {% endfor %}
   </ul>
+  {% if next_before %}
+  <a class="btn btn-ghost btn-block load-more" href="{{ url_for('chat.history', before=next_before) }}">더 보기</a>
+  {% endif %}
+  {% for c in conversations %}
+  <dialog class="dialog" id="delete-{{ c.id }}" aria-labelledby="delete-title-{{ c.id }}">
+    <h2 id="delete-title-{{ c.id }}">이 대화를 삭제할까요?</h2>
+    <p>삭제한 대화는 다시 볼 수 없어요.</p>
+    <form class="dialog-actions" method="post" action="{{ url_for('chat.delete', conversation_id=c.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="button" class="btn btn-secondary" data-dialog-close>취소</button>
+      <button type="submit" class="btn btn-danger">삭제</button>
+    </form>
+  </dialog>
+  {% endfor %}
   {% else %}
   <div class="empty">
     <p>아직 나눈 대화가 없어요.</p>

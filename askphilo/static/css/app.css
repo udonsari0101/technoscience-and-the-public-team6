@@ -1506,3 +1506,41 @@ body.chat-page {
     scroll-behavior: auto !important;
   }
 }
+
+/* ==========================================================================
+   Chat extras
+   ========================================================================== */
+[hidden] {
+  display: none !important;
+}
+.composer-hint {
+  display: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .composer-hint {
+    display: block;
+  }
+}
+.composer-notice {
+  max-width: 720px;
+  margin: 0 auto 8px;
+}
+.chat-sidebar-empty {
+  padding: 12px 16px;
+}
+.chat-sidebar-new .icon {
+  width: 18px;
+  height: 18px;
+}
+.msg-error .btn .icon {
+  width: 16px;
+  height: 16px;
+}
+.ph-grid > li {
+  list-style: none;
+}
+@media (min-width: 960px) {
+  .chat-back {
+    display: none;
+  }
+}

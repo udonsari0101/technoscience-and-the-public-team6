@@ -10,7 +10,7 @@ CSRF = "test-csrf-token"
 
 @pytest.fixture()
 def app():
-    app = create_app({"TESTING": True, "SECRET_KEY": "test-secret-key"})
+    app = create_app({"TESTING": True, "SECRET_KEY": "test-secret-key", "CHAT_MESSAGES_PER_MINUTE": 1000})
     yield app
 
 

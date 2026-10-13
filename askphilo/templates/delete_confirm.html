@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% from "_macros.html" import back_link %}
+{% block title %}대화 삭제 · AskPhilo{% endblock %}
+{% block body %}
+<header class="topbar">
+  {{ back_link(url_for('chat.conversation', conversation_id=conversation.id), '대화로 돌아가기') }}
+  <span class="icon-btn-spacer" aria-hidden="true"></span>
+</header>
+<main id="main" class="page center-page page-enter">
+  <section class="hero">
+    <h1>이 대화를 삭제할까요?</h1>
+    <p>삭제한 대화는 다시 볼 수 없어요.</p>
+    <p class="muted">{{ conversation.philosopher_name }} · {{ conversation.title or '새 상담' }}</p>
+  </section>
+  <form class="hero-actions" method="post" action="{{ url_for('chat.delete', conversation_id=conversation.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn btn-danger btn-block">삭제</button>
+    <a class="btn btn-ghost btn-block" href="{{ url_for('chat.conversation', conversation_id=conversation.id) }}">취소</a>
+  </form>
+</main>
+{% endblock %}
