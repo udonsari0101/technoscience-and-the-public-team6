@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}{{ code }} · AskPhilo{% endblock %}
+{% block body %}
+<main id="main" class="page center-page page-enter">
+  <section class="hero">
+    <img class="hero-logo" src="{{ url_for('static', filename='img/logo.svg') }}" alt="" width="72" height="72">
+    <h1>{{ message }}</h1>
+  </section>
+  <div class="hero-actions">
+    <a class="btn btn-primary btn-block" href="{{ url_for('pages.home') if current_user else url_for('main.index') }}">처음으로</a>
+  </div>
+</main>
+{% endblock %}

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% from "_macros.html" import back_link, icon %}
+{% block title %}설정 · AskPhilo{% endblock %}
+{% block body %}
+<header class="topbar">
+  {{ back_link(url_for('pages.home'), '홈으로') }}
+  <h1 class="topbar-title">설정</h1>
+  <span class="icon-btn-spacer" aria-hidden="true"></span>
+</header>
+<main id="main" class="page page-enter">
+  <section class="settings-group" aria-labelledby="profile-title">
+    <h2 id="profile-title" class="settings-label">프로필</h2>
+    <dl class="settings-card">
+      <div class="settings-row"><dt>이름</dt><dd>{{ current_user.name }}</dd></div>
+      <div class="settings-row"><dt>아이디</dt><dd>{{ current_user.username }}</dd></div>
+    </dl>
+  </section>
+
+  <section class="settings-group" aria-labelledby="theme-title">
+    <h2 id="theme-title" class="settings-label">화면</h2>
+    <div class="settings-card">
+      <fieldset class="segmented" data-theme-control>
+        <legend class="sr-only">테마</legend>
+        <label><input type="radio" name="theme" value="system" checked><span>시스템</span></label>
+        <label><input type="radio" name="theme" value="light"><span>라이트</span></label>
+        <label><input type="radio" name="theme" value="dark"><span>다크</span></label>
+      </fieldset>
+    </div>
+  </section>
+
+  <section class="settings-group" aria-labelledby="data-title">
+    <h2 id="data-title" class="settings-label">데이터</h2>
+    <div class="settings-card">
+      <a class="settings-row settings-link" href="{{ url_for('chat.history') }}">
+        <span>대화 기록</span>{{ icon('chevron') }}
+      </a>
+    </div>
+  </section>
+
+  <section class="settings-group" aria-labelledby="account-title">
+    <h2 id="account-title" class="settings-label">계정</h2>
+    <form class="settings-card" method="post" action="{{ url_for('auth.logout') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="settings-row settings-link danger-text" type="submit">
+        <span>로그아웃</span>{{ icon('logout') }}
+      </button>
+    </form>
+  </section>
+</main>
+{% endblock %}

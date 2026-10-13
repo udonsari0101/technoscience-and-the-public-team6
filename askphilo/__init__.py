@@ -33,6 +33,12 @@ def create_app(overrides: dict | None = None) -> Flask:
         app.config["AI_MODE"] = "mock"
         app.config["DATA_BACKEND"] = "memory"
         app.config["MOCK_AI_DELAY_MS"] = 0
+        app.config["ENABLE_DEV_ROUTES"] = overrides.get("ENABLE_DEV_ROUTES", False)
+
+    if app.config["IS_PRODUCTION"]:
+        # The controller is an evaluation switch only; production keeps it on.
+        app.config["CONTROLLER_ENABLED"] = True
+        app.config["ENABLE_DEV_ROUTES"] = False
 
     _configure_logging(app)
 
@@ -42,11 +48,19 @@ def create_app(overrides: dict | None = None) -> Flask:
     creds = resolve_credentials_path(app.config["FIREBASE_CREDENTIALS_PATH"])
     app.config["FIREBASE_CONFIGURED"] = bool(creds and creds.is_file())
 
+    from . import templating
     from .security import init_security
+    from .views.auth import bp as auth_bp
+    from .views.chat import bp as chat_bp
     from .views.main import bp as main_bp
+    from .views.pages import bp as pages_bp
 
     init_security(app)
+    templating.init_app(app)
     app.register_blueprint(main_bp)
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(pages_bp)
+    app.register_blueprint(chat_bp)
 
     if app.config["SECRET_KEY_GENERATED"] and app.config["IS_PRODUCTION"]:
         log.warning("SECRET_KEY is not set; using an ephemeral key.")

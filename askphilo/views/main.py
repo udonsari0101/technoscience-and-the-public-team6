@@ -2,11 +2,16 @@ from __future__ import annotations
 
 from flask import Blueprint, current_app, jsonify, render_template, send_from_directory
 
+from .pages import landing_redirect
+
 bp = Blueprint("main", __name__)
 
 
 @bp.get("/")
 def index():
+    redirect_response = landing_redirect()
+    if redirect_response is not None:
+        return redirect_response
     return render_template("index.html")
 
 

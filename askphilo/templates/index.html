@@ -1,14 +1,17 @@
 {% extends "base.html" %}
 {% block title %}AskPhilo — 철학자와 나누는 연애 상담{% endblock %}
+{% block body_class %}landing{% endblock %}
 {% block body %}
-<main id="main" class="page center-page">
+<main id="main" class="page center-page page-enter">
   <section class="hero" aria-labelledby="hero-title">
     <img class="hero-logo" src="{{ url_for('static', filename='img/logo.svg') }}" alt="" width="72" height="72">
     <h1 id="hero-title">철학자와 함께<br>내 마음을 들여다봐요</h1>
     <p>원하는 철학자를 고르고, 연애 고민을 편하게 이야기해 보세요.<br>정답 대신 나에게 맞는 기준을 함께 찾아요.</p>
-    <div class="hero-actions">
-      <span class="pill">서비스 준비 중이에요</span>
-    </div>
   </section>
+  <div class="hero-actions">
+    <a class="btn btn-primary btn-block" href="{{ url_for('auth.signup') }}">시작하기</a>
+    <a class="btn btn-ghost btn-block" href="{{ url_for('auth.login') }}">이미 계정이 있어요</a>
+  </div>
+  <p class="muted center footnote">AskPhilo는 결정을 대신하지 않아요. 생각을 정리하도록 도와요.</p>
 </main>
 {% endblock %}

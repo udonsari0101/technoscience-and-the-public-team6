@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% from "_macros.html" import back_link %}
+{% block title %}{{ title }} · AskPhilo{% endblock %}
+{% block body %}
+<header class="topbar">
+  {{ back_link(url_for('pages.home'), '홈으로') }}
+  <h1 class="topbar-title">{{ title }}</h1>
+  <span class="icon-btn-spacer" aria-hidden="true"></span>
+</header>
+<main id="main" class="page center-page page-enter">
+  <div class="empty">
+    <p>곧 열려요.</p>
+    <p class="muted">조금만 기다려 주세요.</p>
+  </div>
+</main>
+{% endblock %}

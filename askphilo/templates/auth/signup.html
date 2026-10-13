@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% from "_macros.html" import back_link, field_error, icon %}
+{% block title %}회원가입 · AskPhilo{% endblock %}
+{% block body %}
+<header class="topbar">
+  {{ back_link(url_for('main.index'), '처음으로') }}
+</header>
+<main id="main" class="page page-enter form-page">
+  <h1 class="page-title">반가워요!<br>몇 가지만 알려주세요</h1>
+  <form class="form" method="post" action="{{ url_for('auth.signup') }}" novalidate data-submit-once>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field">
+      <label for="name">이름</label>
+      <input id="name" name="name" type="text" value="{{ form.name }}" maxlength="30" autocomplete="name" required
+        placeholder="상담에서 불릴 이름" {% if errors.get('name') %}aria-invalid="true" aria-describedby="name-error"{% endif %}>
+      {{ field_error(errors, 'name') }}
+    </div>
+    <div class="field">
+      <label for="username">아이디</label>
+      <input id="username" name="username" type="text" value="{{ form.username }}" minlength="3" maxlength="20"
+        autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" required pattern="[A-Za-z0-9_]{3,20}"
+        aria-describedby="username-hint{% if errors.get('username') %} username-error{% endif %}" {% if errors.get('username') %}aria-invalid="true"{% endif %}>
+      <p class="field-hint" id="username-hint">영문, 숫자, 밑줄(_) 3~20자 · 대소문자는 구분하지 않아요</p>
+      {{ field_error(errors, 'username') }}
+    </div>
+    <div class="field">
+      <label for="password">비밀번호</label>
+      <div class="password-wrap">
+        <input id="password" name="password" type="password" minlength="8" maxlength="128" autocomplete="new-password" required
+          aria-describedby="password-hint{% if errors.get('password') %} password-error{% endif %}" {% if errors.get('password') %}aria-invalid="true"{% endif %}>
+        <button type="button" class="icon-btn reveal" data-reveal="password" aria-label="비밀번호 보기" aria-pressed="false">{{ icon('eye') }}</button>
+      </div>
+      <p class="field-hint" id="password-hint">8자 이상</p>
+      {{ field_error(errors, 'password') }}
+    </div>
+    <div class="field">
+      <label for="password_confirm">비밀번호 확인</label>
+      <input id="password_confirm" name="password_confirm" type="password" minlength="8" maxlength="128" autocomplete="new-password" required
+        {% if errors.get('password_confirm') %}aria-invalid="true" aria-describedby="password_confirm-error"{% endif %}>
+      {{ field_error(errors, 'password_confirm') }}
+    </div>
+    <button class="btn btn-primary btn-block form-submit" type="submit">가입하기</button>
+  </form>
+  <p class="muted center">이미 계정이 있나요? <a href="{{ url_for('auth.login') }}">로그인</a></p>
+</main>
+{% endblock %}

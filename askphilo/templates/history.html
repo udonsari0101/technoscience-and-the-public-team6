@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% from "_macros.html" import back_link %}
+{% block title %}대화 기록 · AskPhilo{% endblock %}
+{% block body %}
+<header class="topbar">
+  {{ back_link(url_for('pages.home'), '홈으로') }}
+  <h1 class="topbar-title">대화 기록</h1>
+  <span class="icon-btn-spacer" aria-hidden="true"></span>
+</header>
+<main id="main" class="page page-enter">
+  {% if conversations %}
+  <ul class="conv-list">
+    {% for c in conversations %}{% include "_conversation_item.html" %}{% endfor %}
+  </ul>
+  {% else %}
+  <div class="empty">
+    <p>아직 나눈 대화가 없어요.</p>
+    <p class="muted"><a href="{{ url_for('chat.new') }}">새 상담 시작하기</a></p>
+  </div>
+  {% endif %}
+</main>
+{% endblock %}

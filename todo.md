@@ -22,32 +22,34 @@
 - [x] pytest (health / config / static / headers)
 - [x] local smoke test (Flask dev server + WSL gunicorn production 설정)
 - [x] git init + 첫 commit `chore: bootstrap render deployment` + main push
-- [ ] Render Blueprint 연결 (사용자 작업)
+- [x] commit에서 Claude co-author 제거 (repo 재생성 후 clean commit `2ed7626` push, 이후 commit에도 넣지 않음)
+- [~] Render Blueprint 연결 (사용자 작업 — 안내 완료, 진행 대기)
 - [ ] Render Secret File 업로드 (사용자 작업)
 - [ ] askphilo.kro.kr DNS + custom domain 검증 (사용자 작업)
 - [ ] production `/health` 확인
 
 ## Firebase / Firestore
-- [ ] Firebase Admin SDK lazy 초기화 (worker 안에서, gRPC fork 안전)
-- [ ] Repository interface + Firestore 구현 + In-memory 구현(테스트/로컬)
-- [ ] Firestore 연결 local 검증 (테스트용 user 생성 후 정리)
+- [x] Firebase Admin SDK lazy 초기화 (worker 안에서, gRPC fork 안전)
+- [x] Repository interface + Firestore 구현 + In-memory 구현(테스트/로컬)
+- [x] Firestore 연결 local 검증 (`scripts/firestore_smoke.py`: 임시 user로 전체 연산 확인 후 데이터 정리)
 
 ## Authentication
-- [ ] 회원가입 UI (이름 · 아이디 · 비밀번호 · 비밀번호 확인)
-- [ ] username 규칙 (3~20자, 영문/숫자/_, 대소문자 무시)
-- [ ] password hashing (평문 저장/로그 금지)
-- [ ] `username_index` transaction으로 중복 가입 방지
-- [ ] 중복 username 동시 가입 테스트
-- [ ] 로그인 / 로그아웃 (HttpOnly session cookie)
-- [ ] 로그인 필요 페이지 보호 (Home/Chat/History/Settings)
-- [ ] CSRF 보호
+- [x] 회원가입 UI (이름 · 아이디 · 비밀번호 · 비밀번호 확인)
+- [x] username 규칙 (3~20자, 영문/숫자/_, 대소문자 무시)
+- [x] password hashing (werkzeug scrypt, 평문 저장/로그 금지 테스트)
+- [x] `username_index` transaction으로 중복 가입 방지
+- [x] 중복 username 동시 가입 테스트 (8 threads → 1명만 성공 / Firestore 중복 거부 확인)
+- [x] 로그인 / 로그아웃 (HttpOnly · SameSite=Lax · production Secure cookie)
+- [x] 로그인 필요 페이지 보호 (Home/Chat/History/Settings)
+- [x] CSRF 보호 (form hidden field + `X-CSRF-Token` header)
+- [x] 로그인/가입 rate limit (in-process, 1 worker)
 
 ## Home / Philosopher
-- [ ] Home (인사, 새 상담 CTA, 최근 대화 5개)
-- [ ] 철학자 데이터 (플라톤 · 아리스토텔레스 · 에피쿠로스 · 니체)
+- [~] Home (인사, 새 상담 CTA, 최근 대화 5개) — 화면 완료, 상담 화면 연결 대기
+- [~] 철학자 데이터 (플라톤 · 아리스토텔레스 · 에피쿠로스 · 니체) — workflow로 초안/검토 진행 중
 - [ ] 철학자 선택 카드 UI ("누구와 이야기해볼까요?")
 - [ ] 철학자 상세 (보는 방식 · 잘 맞는 고민 · 질문 스타일)
-- [ ] 철학자 original SVG visual (일관된 스타일)
+- [~] 철학자 original SVG visual (일관된 스타일) — workflow 진행 중
 
 ## Conversation / Chat
 - [ ] Conversation 생성 (AI 호출 없음)
@@ -58,7 +60,7 @@
 - [ ] Loading: typing dots, input 비활성화
 - [ ] 실패 시 사용자 message 보존 + 명시적 Retry
 - [ ] Conversation 다시 열기
-- [ ] History 목록
+- [~] History 목록 (목록 화면 완료, 삭제 대기)
 - [ ] Conversation 삭제 (messages subcollection 포함)
 - [ ] Soft limit 안내 / Hard limit 차단
 
@@ -81,9 +83,9 @@
 - [ ] Usage 확인 도구 (Flask CLI / dev route)
 
 ## UI / UX
-- [ ] Theme: System / Light / Dark (localStorage)
+- [~] Theme: System / Light / Dark (localStorage) — 구현, 브라우저 확인 대기
 - [ ] Animation (+ prefers-reduced-motion)
-- [ ] Settings (프로필, 테마, 대화 기록, 로그아웃)
+- [~] Settings (프로필, 테마, 대화 기록, 로그아웃) — 화면 완료, 실제 기기 확인 대기
 - [ ] Desktop sidebar layout
 - [ ] Mobile 360/375/390/430 검증
 - [ ] 접근성 (label, focus, 44px, contrast)
@@ -102,3 +104,5 @@
 - Windows에서는 gunicorn이 실행되지 않음 → local은 Flask dev server, gunicorn은 WSL에서 확인함.
 - WebDAV 경로라 git `safe.directory` 예외를 global config에 이 폴더만 추가함.
 - commit author는 GitHub noreply 주소 사용 (public repo에 개인 이메일 노출 방지).
+- RaiDrive(WebDAV) 마운트가 파일 읽기를 간헐적으로 실패시킴(빈 module import, `No such device`) → 로컬 검증은 checksum 검증된 로컬 mirror에서 실행, commit 전 staged blob과 파일 내용 대조.
+- `/new`, `/c/<id>`는 상담 기능 commit 전까지 "곧 열려요" 화면.

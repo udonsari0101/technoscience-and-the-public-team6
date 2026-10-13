@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% from "_macros.html" import brand, icon %}
+{% block title %}홈 · AskPhilo{% endblock %}
+{% block body %}
+<header class="topbar">
+  {{ brand() }}
+  <a class="icon-btn" href="{{ url_for('pages.settings') }}" aria-label="설정">{{ icon('settings') }}</a>
+</header>
+<main id="main" class="page page-enter">
+  <section class="greeting" aria-labelledby="greeting-title">
+    <p class="greeting-hello">안녕하세요, {{ current_user.name }}님</p>
+    <h1 id="greeting-title" class="greeting-title">오늘은 어떤 이야기를<br>해볼까요?</h1>
+  </section>
+
+  <a class="cta-card pressable" href="{{ url_for('chat.new') }}">
+    <span class="cta-icon">{{ icon('plus') }}</span>
+    <span class="cta-text">
+      <strong>새 상담 시작</strong>
+      <span>철학자를 고르고 편하게 이야기해 보세요</span>
+    </span>
+    <span class="cta-chevron">{{ icon('chevron') }}</span>
+  </a>
+
+  <section class="section" aria-labelledby="recent-title">
+    <div class="section-head">
+      <h2 id="recent-title">최근 대화</h2>
+      {% if conversations %}<a class="section-link" href="{{ url_for('chat.history') }}">전체 보기</a>{% endif %}
+    </div>
+    {% if conversations %}
+    <ul class="conv-list">
+      {% for c in conversations %}{% include "_conversation_item.html" %}{% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty">
+      <p>아직 나눈 대화가 없어요.</p>
+      <p class="muted">첫 상담을 시작해 보세요.</p>
+    </div>
+    {% endif %}
+  </section>
+</main>
+{% endblock %}

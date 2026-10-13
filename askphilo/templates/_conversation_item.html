@@ -1,0 +1,13 @@
+{# expects `c` (conversation dict) #}
+<li class="conv-item">
+  <a class="conv-link" href="{{ url_for('chat.conversation', conversation_id=c.id) }}">
+    <img class="avatar avatar-md" src="{{ url_for('static', filename='img/philosophers/' ~ c.philosopher_id ~ '.svg') }}" alt="" width="44" height="44">
+    <span class="conv-body">
+      <span class="conv-top">
+        <span class="conv-title">{{ c.title or '새 상담' }}</span>
+        <time class="conv-time" datetime="{{ c.updated_at|iso_time }}">{{ c.updated_at|relative_time }}</time>
+      </span>
+      <span class="conv-sub">{{ c.philosopher_name }} · {{ c.last_message_preview or '아직 대화가 없어요' }}</span>
+    </span>
+  </a>
+</li>
