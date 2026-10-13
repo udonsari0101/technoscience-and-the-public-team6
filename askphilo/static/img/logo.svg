@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="AskPhilo">
+  <defs>
+    <linearGradient id="ap-g" x1="6" y1="8" x2="58" y2="57" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6E72F7"/>
+      <stop offset="1" stop-color="#4B4FE0"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#ap-g)" d="M16 8H48A10 10 0 0 1 58 18V38A10 10 0 0 1 48 48H29L19 57V48H16A10 10 0 0 1 6 38V18A10 10 0 0 1 16 8Z"/>
+  <path fill="#FFFFFF" d="M31 15C32.2 23.2 34.8 25.8 43 27C34.8 28.2 32.2 30.8 31 39C29.8 30.8 27.2 28.2 19 27C27.2 25.8 29.8 23.2 31 15Z"/>
+  <circle cx="45.5" cy="17.5" r="3.5" fill="#FF8A98"/>
+</svg>

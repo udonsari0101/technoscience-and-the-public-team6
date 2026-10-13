@@ -1,0 +1,70 @@
+"""AskPhilo — philosopher-guided relationship conversations."""
+
+from __future__ import annotations
+
+import logging
+import os
+
+from flask import Flask
+from werkzeug.middleware.proxy_fix import ProxyFix
+
+from .config import load_config, resolve_credentials_path
+
+log = logging.getLogger("askphilo")
+
+
+def create_app(overrides: dict | None = None) -> Flask:
+    overrides = overrides or {}
+    testing = bool(overrides.get("TESTING"))
+
+    if not testing:
+        # Local development reads .env; Render injects real env vars.
+        from dotenv import load_dotenv
+
+        load_dotenv(override=False)
+
+    app = Flask(__name__)
+    app.config.update(load_config())
+    app.config.update(overrides)
+
+    if testing:
+        # Tests must never reach paid APIs or production data,
+        # regardless of what the developer's shell or .env contains.
+        app.config["AI_MODE"] = "mock"
+        app.config["DATA_BACKEND"] = "memory"
+        app.config["MOCK_AI_DELAY_MS"] = 0
+
+    _configure_logging(app)
+
+    # Render terminates TLS at its proxy; trust one hop for scheme/host.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
+    creds = resolve_credentials_path(app.config["FIREBASE_CREDENTIALS_PATH"])
+    app.config["FIREBASE_CONFIGURED"] = bool(creds and creds.is_file())
+
+    from .security import init_security
+    from .views.main import bp as main_bp
+
+    init_security(app)
+    app.register_blueprint(main_bp)
+
+    if app.config["SECRET_KEY_GENERATED"] and app.config["IS_PRODUCTION"]:
+        log.warning("SECRET_KEY is not set; using an ephemeral key.")
+
+    log.info(
+        "AskPhilo started env=%s ai_mode=%s firebase_configured=%s",
+        app.config["APP_ENV"],
+        app.config["AI_MODE"],
+        app.config["FIREBASE_CONFIGURED"],
+    )
+    return app
+
+
+def _configure_logging(app: Flask) -> None:
+    level = logging.DEBUG if os.environ.get("ASKPHILO_DEBUG_LOG") else logging.INFO
+    if not logging.getLogger().handlers:
+        logging.basicConfig(
+            level=level,
+            format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        )
+    log.setLevel(level)

@@ -1,0 +1,39 @@
+# ---------------------------------------------------------------
+# Secrets — NEVER commit these (this repository is public)
+# ---------------------------------------------------------------
+.env
+.env.*
+!.env.example
+secrets/
+*service-account*.json
+*serviceAccount*.json
+*firebase-adminsdk*.json
+*credentials*.json
+*.pem
+*.key
+*.p12
+
+# ---------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# ---------------------------------------------------------------
+# Editors / OS
+# ---------------------------------------------------------------
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log
+instance/

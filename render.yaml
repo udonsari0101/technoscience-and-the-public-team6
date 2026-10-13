@@ -1,0 +1,50 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+# Secrets are NOT stored here:
+#   * ANTHROPIC_API_KEY: prompted once when the Blueprint is created (sync: false)
+#   * Firebase service account: upload as a Secret File named
+#     firebase-service-account.json (Dashboard → Environment → Secret Files)
+services:
+  - type: web
+    name: askphilo
+    runtime: python
+    plan: free
+    region: singapore
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn wsgi:app
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    domains:
+      - askphilo.kro.kr
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_NAME
+        value: AskPhilo
+      - key: APP_URL
+        value: https://askphilo.kro.kr
+      - key: SECRET_KEY
+        generateValue: true
+      - key: FIREBASE_CREDENTIALS_PATH
+        value: /etc/secrets/firebase-service-account.json
+      - key: AI_MODE
+        value: mock
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_MODEL
+        value: claude-haiku-5-5
+      - key: CONTROLLER_VERSION
+        value: v1
+      - key: MAX_CONTEXT_MESSAGES
+        value: "10"
+      - key: MAX_OUTPUT_TOKENS
+        value: "300"
+      - key: SOFT_CONVERSATION_MESSAGE_LIMIT
+        value: "150"
+      - key: HARD_CONVERSATION_MESSAGE_LIMIT
+        value: "300"
+      - key: CONTEXT_SUMMARY_TRIGGER_MESSAGES
+        value: "20"
+      # Replaces Render's default (which adds --preload); settings live in gunicorn.conf.py
+      - key: GUNICORN_CMD_ARGS
+        value: "--access-logfile -"

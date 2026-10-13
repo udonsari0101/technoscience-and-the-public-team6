@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#101216" media="(prefers-color-scheme: dark)">
+  <meta name="description" content="원하는 철학자와 함께 연애 고민을 새롭게 바라보는 AskPhilo">
+  <title>{% block title %}AskPhilo{% endblock %}</title>
+  <link rel="icon" href="{{ url_for('static', filename='img/favicon.ico') }}" sizes="any">
+  <link rel="icon" href="{{ url_for('static', filename='img/logo.svg') }}" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/apple-touch-icon.png') }}">
+  <script src="{{ url_for('static', filename='js/theme-init.js') }}"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+  {% block head %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% endblock %}">
+  <a class="skip-link" href="#main">본문으로 건너뛰기</a>
+  {% block body %}
+  <main id="main" class="page">
+    {% block content %}{% endblock %}
+  </main>
+  {% endblock %}
+  {% block scripts %}{% endblock %}
+</body>
+</html>
