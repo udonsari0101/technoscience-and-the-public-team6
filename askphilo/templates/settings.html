@@ -21,7 +21,7 @@
     <div class="settings-card">
       <fieldset class="segmented" data-theme-control>
         <legend class="sr-only">테마</legend>
-        <label><input type="radio" name="theme" value="system" checked><span>시스템</span></label>
+        <label><input type="radio" name="theme" value="system"><span>시스템</span></label>
         <label><input type="radio" name="theme" value="light"><span>라이트</span></label>
         <label><input type="radio" name="theme" value="dark"><span>다크</span></label>
       </fieldset>
@@ -37,6 +37,24 @@
     </div>
   </section>
 
+  <section class="settings-group" aria-labelledby="memory-title">
+    <h2 id="memory-title" class="settings-label">상담 기억</h2>
+    <div class="settings-card">
+      {% set items = (memory.get('relationship_values') or []) + (memory.get('preferences') or []) %}
+      {% if items %}
+      <ul class="memory-list">
+        {% for item in items %}<li>{{ item }}</li>{% endfor %}
+      </ul>
+      <p class="settings-note">여러 상담에 이어서 참고하는 내용이에요. 대화를 지워도 이 기억은 남아 있어요.</p>
+      <a class="settings-row settings-link danger-text" href="#memory-dialog" data-dialog-open="memory-dialog">
+        <span>상담 기억 지우기</span>{{ icon('trash') }}
+      </a>
+      {% else %}
+      <p class="settings-note">아직 기억해 둔 내용이 없어요. 긴 상담에서 직접 말한 선호나 가치만 짧게 기억해요.</p>
+      {% endif %}
+    </div>
+  </section>
+
   <section class="settings-group" aria-labelledby="account-title">
     <h2 id="account-title" class="settings-label">계정</h2>
     <form class="settings-card" method="post" action="{{ url_for('auth.logout') }}">
@@ -47,4 +65,15 @@
     </form>
   </section>
 </main>
+{% if items %}
+<dialog class="dialog" id="memory-dialog" aria-labelledby="memory-dialog-title">
+  <h2 id="memory-dialog-title">상담 기억을 지울까요?</h2>
+  <p>지운 기억은 되돌릴 수 없어요. 대화 기록은 그대로 남아요.</p>
+  <form class="dialog-actions" method="post" action="{{ url_for('pages.clear_memory') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="button" class="btn btn-secondary" data-dialog-close>취소</button>
+    <button type="submit" class="btn btn-danger">지우기</button>
+  </form>
+</dialog>
+{% endif %}
 {% endblock %}

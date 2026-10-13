@@ -76,8 +76,8 @@ def fake_response(text="좋은 질문이야. 너는 어떻게 생각해?", stop=
                            stop_details=None)
 
 
-def provider_with(model, response=None, error=None):
-    p = AnthropicProvider(api_key="sk-test", model=model)
+def provider_with(model, response=None, error=None, **kwargs):
+    p = AnthropicProvider(api_key="sk-test", model=model, **kwargs)
     ga, beta = FakeMessages(response, error), FakeMessages(response, error)
     p._client = SimpleNamespace(messages=ga, beta=SimpleNamespace(messages=beta))
     return p, ga, beta
@@ -86,19 +86,55 @@ def provider_with(model, response=None, error=None):
 PHILO = {"id": "plato", "name": "플라톤"}
 
 
-def test_opus_request_uses_fallback_cache_effort_and_headroom():
+def test_opus_request_shape_defaults():
     p, ga, beta = provider_with("claude-opus-5-5", fake_response())
     reply = p.reply(system="SYS", messages=[{"role": "user", "content": "hi"}], philosopher=PHILO,
                     max_tokens=300)
     assert reply.text == "좋은 질문이야. 너는 어떻게 생각해?"
     assert reply.usage.input_tokens == 900 and reply.usage.cache_read_input_tokens == 500
-    assert ga.calls == [] and len(beta.calls) == 1
-    call = beta.calls[0]
-    assert call["fallbacks"] == "default" and call["betas"] == ["server-side-fallback-2026-07-01"]
+    # refusal fallback is opt-in (one generation per message by default)
+    assert beta.calls == [] and len(ga.calls) == 1
+    call = ga.calls[0]
+    assert "fallbacks" not in call
+    assert call["system"] == [{"type": "text", "text": "SYS", "cache_control": {"type": "ephemeral"}}]
     assert call["cache_control"] == {"type": "ephemeral"}
     assert call["output_config"] == {"effort": "low"}
     assert call["max_tokens"] == 300 + 1024  # thinking cannot be disabled on Opus 5.5
     assert "thinking" not in call and "temperature" not in call
+
+
+def test_opus_refusal_fallback_when_opted_in():
+    p, ga, beta = provider_with("claude-opus-5-5", fake_response(), refusal_fallback=True)
+    p.reply(system="SYS", messages=[{"role": "user", "content": "hi"}], philosopher=PHILO, max_tokens=300)
+    assert ga.calls == [] and len(beta.calls) == 1
+    call = beta.calls[0]
+    assert call["fallbacks"] == "default" and call["betas"] == ["server-side-fallback-2026-07-01"]
+
+
+def test_thinking_off_models_clamp_effort():
+    p, ga, _ = provider_with("claude-sonnet-5-5", fake_response(), effort="max")
+    p.reply(system="S", messages=[{"role": "user", "content": "x"}], philosopher=PHILO, max_tokens=300)
+    assert ga.calls[0]["thinking"] == {"type": "between_tools"}
+    assert ga.calls[0]["output_config"] == {"effort": "high"}
+    p, ga, _ = provider_with("claude-opus-5-5", fake_response(), effort="max")
+    p.reply(system="S", messages=[{"role": "user", "content": "x"}], philosopher=PHILO, max_tokens=300)
+    assert ga.calls[0]["output_config"] == {"effort": "max"}
+
+
+def test_truncated_summary_never_touches_memory():
+    text = "<summary>\n- 연락 문제\n</summary>\n<relationship_values>\n- 신뢰"
+    p, _, _ = provider_with("claude-haiku-5-5", fake_response(text=text, stop="max_tokens"))
+    result = p.summarize(system="S", prompt="P", philosopher=PHILO, old_summary="", old_memory=None,
+                         transcript=[], max_tokens=600)
+    assert result.summary == "- 연락 문제" and result.user_memory is None
+
+
+def test_sdk_loggers_are_not_debug():
+    import logging
+
+    create_app({"TESTING": True})
+    for name in ("anthropic", "httpx", "httpcore"):
+        assert logging.getLogger(name).getEffectiveLevel() >= logging.WARNING
 
 
 def test_haiku_request_disables_thinking_without_fallback():
@@ -130,10 +166,10 @@ def test_truncated_reply_is_cut_to_last_sentence():
 def test_api_errors_are_not_retried():
     import anthropic
 
-    p, _, beta = provider_with("claude-opus-5-5", error=anthropic.APIConnectionError(request=None))
+    p, ga, beta = provider_with("claude-opus-5-5", error=anthropic.APIConnectionError(request=None))
     with pytest.raises(AIError):
         p.reply(system="S", messages=[{"role": "user", "content": "x"}], philosopher=PHILO, max_tokens=300)
-    assert len(beta.calls) == 1
+    assert len(ga.calls) == 1 and beta.calls == []
 
 
 def test_real_client_is_built_without_sdk_retries(monkeypatch):

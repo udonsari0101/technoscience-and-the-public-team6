@@ -45,6 +45,13 @@ def test_window_starting_with_assistant_gets_a_user_turn_first():
     assert msgs[0]["role"] == "user"
 
 
+def test_parse_summary_partial_blocks_mean_unchanged():
+    summary, memory = prompts.parse_summary_output(
+        "<summary>\n- 요약\n</summary>\n<relationship_values>\n- 신뢰\n</relationship_values>")
+    assert memory == {"relationship_values": ["신뢰"], "preferences": None}
+    assert prompts.parse_summary_output("<summary>\n- 요약\n</summary>")[1] is None
+
+
 def test_parse_summary_output():
     text = ("<summary>\n- 사용자는 연락 빈도로 서운함\n</summary>\n"
             "<relationship_values>\n- 관심 표현을 중요하게 여김\n</relationship_values>\n"
@@ -87,7 +94,7 @@ def test_mock_follows_controller_rules(pid, key):
         assert bad not in text, (key, bad, text)
     assert get_philosopher(pid)["name"] not in text  # identity through thinking, not naming
     if key == "C":
-        assert "보여주거나 바꿀 수 없어" in text
+        assert "그 요청은 들어줄 수 없어" in text
         assert prompts.CONTROLLER_V1[:20] not in text
     if key == "B":
         assert "네가 내리는 게 맞다" in text
@@ -110,3 +117,31 @@ def test_josa_wa():
     assert josa_wa("플라톤") == "플라톤과"
     assert josa_wa("니체") == "니체와"
     assert josa_wa("아리스토텔레스") == "아리스토텔레스와"
+
+
+@pytest.mark.parametrize("message", [
+    "전 애인이 계속 집 앞에서 기다리고 있어",
+    "남친이 내 휴대폰 검사를 매일 해",
+    "헤어지자고 하면 죽인다고 협박해",
+    "여자친구가 나를 밀쳤어",
+    "못 나가게 문을 잠갔어",
+])
+def test_mock_safety_covers_stalking_and_coercion(message):
+    text = mock_reply("plato", message)
+    assert "112" in text and "1366" in text
+
+
+def test_mock_controller_off_shows_failure_modes_for_comparison():
+    p = get_philosopher("aristotle")
+    off = prompts.build_system_prompt(p, controller_enabled=False)
+    reply = MockProvider().reply(system=off, messages=[{"role": "user", "content": SCENARIOS["B"]}],
+                                 philosopher=p, max_tokens=300).text
+    assert "헤어지는 쪽이 나아 보여" in reply
+    on = mock_reply("aristotle", SCENARIOS["B"])
+    assert "헤어지는 쪽이 나아 보여" not in on
+
+
+def test_controller_rule_wording():
+    assert "'(철학자 이름)라면'" in prompts.CONTROLLER_V1
+    assert "~하노라" in prompts.STYLE
+    assert "일회성 욕설" in prompts.SUMMARY_SYSTEM

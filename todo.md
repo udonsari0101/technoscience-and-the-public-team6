@@ -16,7 +16,7 @@
 - [x] Landing 화면 + static CSS + favicon/logo
 - [x] `gunicorn.conf.py` (1 worker · 8 threads · no preload)
 - [x] `requirements.txt` / `requirements-dev.txt` / `.python-version`
-- [x] `render.yaml` (free · singapore · main · /health · AI_MODE=mock)
+- [x] `render.yaml` (free · singapore · main · /health · AI_MODE 초기값 mock, 이후 Dashboard 소유 `sync: false`)
 - [x] `.env.example`
 - [x] Secret 검사 스크립트 + pre-commit hook (`scripts/check_secrets.py`)
 - [x] pytest (health / config / static / headers)
@@ -59,8 +59,8 @@
 - [x] Title: 첫 user message 앞부분 (AI 호출 없음)
 - [x] Chat UI (bubble, auto-resize textarea, sticky composer, safe-area, 100dvh)
 - [x] Enter 전송 / Shift+Enter 줄바꿈 (desktop, 한글 IME 조합 중 Enter 무시)
-- [x] Loading: typing dots, input 비활성화
-- [x] 실패 시 사용자 message 보존 + 명시적 Retry
+- [x] Loading: typing dots, 전송 중 입력 잠금(readonly) · 전송 버튼 비활성화
+- [x] 실패 시 사용자 message 보존 + 명시적 Retry (생성 중에는 retry 차단)
 - [x] Conversation 다시 열기 (+ 이전 메시지 더 보기)
 - [x] History 목록 (+ 더 보기)
 - [x] Conversation 삭제 (messages subcollection 포함, 확인 dialog/페이지)
@@ -90,19 +90,43 @@
 - [!] 실제 Anthropic 호출 검증 — 사용자가 AI_MODE=anthropic 전환을 결정할 때까지 보류 (유료). Render `ANTHROPIC_MODEL` 현재값 확인 필요
 
 ## UI / UX
-- [~] Theme: System / Light / Dark (localStorage) — 구현, 브라우저 확인 대기
+- [x] Theme: System / Light / Dark (localStorage, headless 브라우저로 저장·해제 확인)
 - [x] Animation (page/message/sheet/dialog/typing/press + prefers-reduced-motion)
 - [x] Settings (프로필, 테마, 대화 기록, 로그아웃)
 - [x] Desktop sidebar layout (≥960px)
-- [ ] Mobile 360/375/390/430 검증 (headless browser screenshot)
-- [~] 접근성 (label, focus, 44px, role=log, aria) — 구현, 점검 대기
+- [x] Mobile 360/375/390/430 검증 (headless Chromium: 가로 넘침·sticky composer·44px·Enter 동작)
+- [x] 접근성 (label, focus ring, 44px, role=log, 대비 4.5:1, reduced motion)
 
 ## Docs / QA
-- [x] README (spec 101 항목 전체)
+- [x] README (spec 101 항목 + UI/로그/오류/범위/스크립트, 리뷰 지적 반영)
 - [x] Controller scenario 테스트 (A~D mock, E~G memory)
 - [x] API 사용량 검증 (1 message = 1 call, 페이지 AI 호출 0 테스트)
-- [ ] Multi-agent 코드 리뷰 + 검증 (security / correctness / spec compliance / cost)
-- [ ] Production smoke test
+- [x] Multi-agent 코드 리뷰 (보안·정확성 리뷰 10건 + spec 준수 감사 20건) → 아래 Review fixes
+- [x] Production smoke test (`scripts/smoke_test.py`: 27/27, 실제 Firestore, 테스트 계정 정리)
+- [x] Headless browser UI 검증 (`scripts/ui_check.py`: 360/375/390/430, 44/44)
+
+## Review fixes
+- [x] Rate limiter: 무제한 key 생성(메모리 DoS) · prune window 혼용 · IP 먼저 검사
+- [x] Open redirect: `next=/<TAB>/evil.com` 우회 차단 (제어문자 거부 + urlsplit 검사)
+- [x] 답변 생성 중 retry/중복 전송 → 대화별 reply lock + 저장 순서 검증 + "답변을 준비하고 있어요" 상태
+- [x] 요약을 요청 thread 밖(단일 worker executor)에서 실행, 요약 저장 실패도 다음 단계까지 보류
+- [x] 비용 상한: 사용자별 일일 메시지 + 전체 시간당 AI 호출 circuit breaker
+- [x] Refusal fallback 기본 off (spec: 메시지당 생성 1회 · 자동 retry 금지)
+- [x] 답변 저장 실패 시 재시도 가능 오류로 처리, JS는 저장 전 오류일 때만 입력 복원
+- [x] 잘린 요약 출력이 user memory를 지우지 않도록 (닫히지 않은 블록 = 변경 없음)
+- [x] 잘못된 입력 500 방지 (비문자 content, 비ASCII CSRF, naive `before`)
+- [x] conversation_id UUID 검증, Firestore 예약 username(`__x__`) 거부
+- [x] thinking off 모델은 effort를 high 이하로 제한, system prompt에 별도 cache breakpoint
+- [x] production에서는 대화별 controller 값과 무관하게 항상 controller on
+- [x] SDK debug log가 prompt를 남기지 않도록 anthropic/httpx logger 고정
+- [x] 상담 기억(user memory) 보기/지우기 (Settings)
+- [x] 대비(text-3, focus ring, danger, 말풍선, chip) · retry 버튼 44px · a11y 세부(chips/typing/menu)
+- [x] Mock: 스토킹·강압 표현 안전 분기, controller off 비교가 의미 있게
+- [x] 문구: 회원가입/로그인 존댓말 통일, injection 거절 문구, controller 규칙 5 표현, 요약 제외 항목
+- [x] README 정확성(300 token 의미, raw 11~20개, 스크립트, UI/로그/오류/범위 섹션)
+- [x] Client IP: Render(Cloudflare) `True-Client-IP` 사용, ProxyFix `x_for=3`, `x_host` 미사용 (조사: Render staff 답변·Cloudflare 문서)
+- [x] Firestore smoke에 `expect_count` 충돌·memory 삭제 추가 (실제 Firestore 통과)
+- [x] UI: 홈 목록 긴 제목 overflow, 다크 모드 버튼 대비, 입력창 44px 터치 영역, 다크 테마 선택 표시
 
 ---
 
@@ -117,3 +141,6 @@
 - render.yaml의 `AI_MODE`/`ANTHROPIC_MODEL`을 `sync: false`로 변경 → Dashboard 값이 우선. 최초 Blueprint 생성 때 `ANTHROPIC_MODEL=claude-haiku-5-5`가 들어갔으므로 전환 전 Dashboard에서 원하는 모델로 설정 필요.
 - Opus 5.5는 thinking을 끌 수 없음 → `max_tokens = MAX_OUTPUT_TOKENS + ANTHROPIC_THINKING_HEADROOM_TOKENS`. Haiku/Sonnet 5.5는 thinking off + 300.
 - Raw context는 10~19개(요약되지 않은 메시지 전부, 빠지는 구간 없음). 요약은 메시지 20, 30, 40…에서 실행.
+- 가입 후 바로 로그인(Home 이동)으로 흐름을 줄임 — spec의 Signup → Login → Home 대비 의도적 단축 (변경 쉬움).
+- 일일/시간당 상한은 in-process(1 worker) 기준이라 재배포·재시작 시 초기화됨.
+- RaiDrive 쓰기 오류로 todo.md가 0바이트로 잘린 적 있음 → HEAD + 변경분으로 복원, 이후 로컬 작성 후 checksum 검증하며 복사.

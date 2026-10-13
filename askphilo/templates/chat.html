@@ -32,6 +32,7 @@
         data-chat
         data-conversation-id="{{ conversation.id if conversation else '' }}"
         data-philosopher-id="{{ p.id }}"
+        data-philosopher-name="{{ p.name }}"
         data-oldest-index="{{ messages[0]['index'] if messages else 0 }}"
         data-max-chars="{{ max_chars }}">
     <header class="chat-header">
@@ -44,7 +45,7 @@
         </div>
       </div>
       <div class="menu-wrap">
-        <button type="button" class="icon-btn" data-menu-toggle aria-haspopup="true" aria-expanded="false" aria-controls="chat-menu" aria-label="더보기">{{ icon('more') }}</button>
+        <button type="button" class="icon-btn" data-menu-toggle aria-expanded="false" aria-controls="chat-menu" aria-label="더보기">{{ icon('more') }}</button>
         <div class="menu" id="chat-menu" data-menu hidden>
           <a href="{{ url_for('chat.philosopher', philosopher_id=p.id) }}" data-dialog-open="sheet-{{ p.id }}">철학자 소개</a>
           <a href="{{ url_for('chat.new') }}">새 상담 시작</a>
@@ -76,10 +77,15 @@
           <div class="bubble"><span class="sr-only">{{ '나: ' if m.role == 'user' else p.name ~ ': ' }}</span>{{ m.content }}</div>
         </div>
         {% endfor %}
-        {% if pending %}
+        {% if reply_state == 'failed' %}
         <div class="msg-error" data-pending>
-          <span>답변을 가져오지 못했어요.</span>
+          <span>답변을 가져오지 못했어요. 잠시 후 다시 시도해 주세요.</span>
           <button type="button" class="btn btn-secondary" data-retry>{{ icon('refresh') }} 다시 시도</button>
+        </div>
+        {% elif reply_state == 'pending' %}
+        <div class="msg-pending" data-pending role="status">
+          <span>답변을 준비하고 있어요.</span>
+          <a class="btn btn-secondary btn-sm" href="{{ url_for('chat.conversation', conversation_id=conversation.id) }}">{{ icon('refresh') }} 새로고침</a>
         </div>
         {% endif %}
       </div>

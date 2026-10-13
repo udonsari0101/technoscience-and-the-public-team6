@@ -109,12 +109,15 @@ class Repository:
     # ---- messages ----------------------------------------------------------
     def append_messages(self, user_id: str, conversation_id: str,
                         messages: list[dict], *, conversation_updates: dict | None = None,
-                        usage_increments: dict | None = None) -> list[dict]:
+                        usage_increments: dict | None = None,
+                        expect_count: int | None = None) -> list[dict]:
         """Transactionally assign message_index values and store messages.
 
         Updates message_count, updated_at, last_message_* on the
         conversation, sets `title` if it is still empty, applies
         `conversation_updates` and adds `usage_increments` to usage.*.
+        With `expect_count`, raises Conflict unless message_count equals it
+        (keeps a reply directly after the message it answers).
         Returns the stored messages (with message_index).
         """
         raise NotImplementedError
@@ -151,6 +154,9 @@ class Repository:
         raise NotImplementedError
 
     def set_user_memory(self, user_id: str, memory: dict) -> None:
+        raise NotImplementedError
+
+    def delete_user_memory(self, user_id: str) -> None:
         raise NotImplementedError
 
     # ---- developer tooling ---------------------------------------------------

@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import copy
 import threading
+from datetime import timezone
 
 from .base import (
     EMPTY_USAGE,
     SCHEMA_VERSION,
+    Conflict,
     NotFound,
     Repository,
     UsernameTaken,
@@ -85,6 +87,8 @@ class MemoryRepository(Repository):
             return {"id": conversation_id, **copy.deepcopy(doc)} if doc else None
 
     def list_conversations(self, user_id, limit=20, before=None):
+        if before is not None and before.tzinfo is None:
+            before = before.replace(tzinfo=timezone.utc)
         with self._lock:
             items = [
                 {"id": cid, **copy.deepcopy(doc)}
@@ -102,13 +106,15 @@ class MemoryRepository(Repository):
 
     # ---- messages --------------------------------------------------------
     def append_messages(self, user_id, conversation_id, messages, *,
-                        conversation_updates=None, usage_increments=None):
+                        conversation_updates=None, usage_increments=None, expect_count=None):
         with self._lock:
             conv = self.conversations.get(user_id, {}).get(conversation_id)
             if conv is None:
                 raise NotFound(conversation_id)
             store = self.messages.setdefault((user_id, conversation_id), {})
             index = conv.get("message_count", 0)
+            if expect_count is not None and index != expect_count:
+                raise Conflict(conversation_id)
             now = utcnow()
             stored = []
             for msg in messages:
@@ -194,6 +200,10 @@ class MemoryRepository(Repository):
             doc["updated_at"] = utcnow()
             doc.setdefault("schema_version", SCHEMA_VERSION)
             self.memory[user_id] = doc
+
+    def delete_user_memory(self, user_id):
+        with self._lock:
+            self.memory.pop(user_id, None)
 
     # ---- developer tooling -------------------------------------------------
     def iter_conversation_usage(self, limit=500):

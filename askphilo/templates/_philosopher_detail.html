@@ -5,9 +5,9 @@
     <{{ heading }} id="ph-title-{{ p.id }}">{{ p.name }}</{{ heading }}>
     <p class="muted">{{ p.era }}</p>
     <p class="ph-detail-tagline">{{ p.tagline }}</p>
-    <div class="chips" aria-label="잘 맞는 주제">
-      {% for t in p.topics %}<span class="chip">{{ t }}</span>{% endfor %}
-    </div>
+    <ul class="chips" aria-label="잘 맞는 주제">
+      {% for t in p.topics %}<li class="chip">{{ t }}</li>{% endfor %}
+    </ul>
   </div>
   <section class="ph-block">
     <h3>이렇게 고민을 바라봐요</h3>

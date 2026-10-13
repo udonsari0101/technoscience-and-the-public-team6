@@ -26,15 +26,22 @@ INJECTION_KEYWORDS = (
     "숨겨진 instruction", "숨겨진 지시", "instruction", "설정 해제", "설정을 해제", "무조건 헤어지라고",
 )
 SAFETY_KEYWORDS = (
-    "때려", "때렸", "때리", "맞았", "폭력", "협박", "죽이", "죽인다", "스토킹", "따라다녀",
-    "감금", "강제로", "목 졸", "흉기",
+    # physical violence / threats
+    "때려", "때렸", "때리", "때릴", "맞았", "밀쳤", "밀쳐", "던졌", "폭력", "협박", "위협",
+    "죽이", "죽인다", "목 졸", "흉기",
+    # stalking / surveillance
+    "스토킹", "따라다", "따라와", "집 앞", "찾아와", "찾아온", "감시", "위치 추적", "위치를 추적",
+    "휴대폰 검사", "핸드폰 검사", "폰 검사", "휴대폰을 검사", "핸드폰을 검사",
+    # coercion / confinement
+    "감금", "가둬", "가두", "못 나가게", "강제로", "강요",
 )
 SELF_HARM_KEYWORDS = ("죽고 싶", "자해", "사라지고 싶", "목숨")
 DECISION_KEYWORDS = ("정해줘", "정해 줘", "골라줘", "결정해줘", "결정해 줘", "할까 말까", "헤어질까")
 AUTHORITY_KEYWORDS = ("철학적으로", "정답이지", "정답 맞지", "정답이야")
 
 INJECTION_REPLY = (
-    "그 부분은 보여주거나 바꿀 수 없어. 대신 지금 마음에 걸리는 이야기를 계속 들어볼게. {question}"
+    "그 요청은 들어줄 수 없어. 숨겨진 설정을 보여주거나 결론을 대신 정해주지는 않아. "
+    "대신 지금 마음에 걸리는 이야기를 계속 들어볼게. {question}"
 )
 SAFETY_REPLY = (
     "지금 이야기에서 네 안전이 가장 먼저 걱정돼. 몸이 다칠 위험이 있거나 위협을 느끼면 바로 112에 연락하고, "
@@ -46,6 +53,17 @@ SELF_HARM_REPLY = (
 )
 DECISION_LEAD = "그 결정은 내가 대신 정하기보다 네가 내리는 게 맞다고 생각해. 대신 정리하는 건 같이 해볼게."
 AUTHORITY_LEAD = "철학이 정답을 대신 정해주지는 않아. 다만 하나의 관점으로 같이 볼 수는 있어."
+INTENT_KEYWORDS = ("무시하는 거지", "나 무시", "좋아하는 거 맞지", "좋아하는 거지", "마음이 식은 거지")
+
+# Evaluation only (CONTROLLER_ENABLED=false, never in production): imitate the
+# typical failure modes the controller exists to prevent, so the on/off
+# comparison is visible without paying for real API calls.
+UNCONTROLLED_LEADS = {
+    "decision": "솔직히 지금 이야기만 들으면 헤어지는 쪽이 나아 보여.",
+    "intent": "답장이 그렇게 늦다면 너를 무시하는 걸 수도 있어.",
+    "authority": "철학적으로 보면 그게 정답에 가까워.",
+}
+CONTROLLER_MARKER = "지켜야 할 원칙:"
 
 
 def _has(text: str, words) -> bool:
@@ -93,7 +111,16 @@ class MockProvider(AIProvider):
         question = _pick(fresh_questions, seed, 2)
         fresh_reframes = [r for r in mock["reframes"] if r not in recent] or mock["reframes"]
 
-        if _has(last, INJECTION_KEYWORDS):
+        controlled = CONTROLLER_MARKER in (system or "")
+        if not controlled:
+            kind = ("decision" if _has(last, DECISION_KEYWORDS) else
+                    "intent" if _has(last, INTENT_KEYWORDS) else
+                    "authority" if _has(last, AUTHORITY_KEYWORDS) else None)
+            if kind:
+                text = f"{UNCONTROLLED_LEADS[kind]} {_pick(fresh_reframes, seed, 1)}"
+                return AIReply(text=text, provider=self.name, model=self.model,
+                               usage=AIUsage(), stop_reason="end_turn")
+        if controlled and _has(last, INJECTION_KEYWORDS):
             text = INJECTION_REPLY.format(question=question)
         elif _has(last, SELF_HARM_KEYWORDS):
             text = SELF_HARM_REPLY

@@ -24,9 +24,9 @@
       </div>
       <p class="ph-card-tagline">{{ p.tagline }}</p>
       <p class="ph-card-desc">{{ p.description }}</p>
-      <div class="chips" aria-label="주제">
-        {% for t in p.topics %}<span class="chip">{{ t }}</span>{% endfor %}
-      </div>
+      <ul class="chips" aria-label="주제">
+        {% for t in p.topics %}<li class="chip">{{ t }}</li>{% endfor %}
+      </ul>
       <div class="ph-card-actions">
         <a class="btn btn-secondary btn-sm" href="{{ url_for('chat.philosopher', philosopher_id=p.id) }}"
            data-dialog-open="sheet-{{ p.id }}" aria-label="{{ p.name }} 더 알아보기">더 알아보기</a>

@@ -38,6 +38,14 @@ class SignupError(Exception):
         self.errors = errors
 
 
+def is_valid_username(username: str) -> bool:
+    """3–20 of [A-Za-z0-9_], and not Firestore-reserved (`__name__` ids)."""
+    name = (username or "").strip()
+    if not USERNAME_RE.match(name):
+        return False
+    return not (name.startswith("__") and name.endswith("__"))
+
+
 def normalize_username(username: str) -> str:
     return (username or "").strip().lower()
 
@@ -56,7 +64,7 @@ def validate_signup(name: str, username: str, password: str, password_confirm: s
     elif any(unicodedata.category(ch).startswith("C") for ch in name):
         errors["name"] = MSG["name_invalid"]
 
-    if not USERNAME_RE.match((username or "").strip()):
+    if not is_valid_username(username):
         errors["username"] = MSG["username_invalid"]
 
     password = password or ""
@@ -90,7 +98,7 @@ def signup(repo: Repository, *, name: str, username: str, password: str, passwor
 def authenticate(repo: Repository, *, username: str, password: str) -> dict | None:
     normalized = normalize_username(username)
     password = password or ""
-    if not USERNAME_RE.match(normalized) or not password or len(password) > PASSWORD_MAX:
+    if not is_valid_username(normalized) or not password or len(password) > PASSWORD_MAX:
         check_password_hash(_DUMMY_HASH, password[:PASSWORD_MAX])
         return None
     user = repo.get_user_by_username(normalized)

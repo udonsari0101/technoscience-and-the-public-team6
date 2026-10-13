@@ -37,3 +37,6 @@ htmlcov/
 Thumbs.db
 *.log
 instance/
+
+# local UI check output
+ui-shots/

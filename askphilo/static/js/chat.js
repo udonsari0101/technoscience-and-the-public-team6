@@ -16,12 +16,19 @@
   var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || "";
   var conversationId = root.getAttribute("data-conversation-id") || "";
   var philosopherId = root.getAttribute("data-philosopher-id");
+  var philosopherName = root.getAttribute("data-philosopher-name") || "상담";
   var oldestIndex = parseInt(root.getAttribute("data-oldest-index") || "0", 10);
   var busy = false;
   var desktopEnter = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
 
   var MSG_FAILED = "답변을 가져오지 못했어요. 잠시 후 다시 시도해 주세요.";
   var MSG_NETWORK = "잠시 연결이 불안정해요. 다시 시도해 주세요.";
+  var MSG_PENDING = "답변을 준비하고 있어요. 잠시 후 새로고침해 주세요.";
+  // Errors raised before the user's message was stored: safe to put it back in the composer.
+  var PRE_SAVE = {
+    empty: 1, too_long: 1, too_large: 1, csrf: 1, rate_limited: 1, daily_limit: 1, busy: 1,
+    bad_philosopher: 1, hard_limit: 1, in_progress: 1, storage: 1
+  };
 
   // ---------------------------------------------------------------- helpers
   function nearBottom() {
@@ -43,7 +50,7 @@
     if (index != null) row.setAttribute("data-index", index);
     if (role === "assistant" && avatarTpl) row.appendChild(avatarTpl.content.cloneNode(true));
     var bubble = el("div", "bubble");
-    bubble.appendChild(el("span", "sr-only", role === "user" ? "나: " : "상담: "));
+    bubble.appendChild(el("span", "sr-only", role === "user" ? "나: " : philosopherName + ": "));
     bubble.appendChild(document.createTextNode(content));
     row.appendChild(bubble);
     return row;
@@ -53,7 +60,8 @@
     row.setAttribute("data-typing", "");
     if (avatarTpl) row.appendChild(avatarTpl.content.cloneNode(true));
     var bubble = el("div", "bubble typing");
-    bubble.setAttribute("aria-label", "답변을 준비하고 있어요");
+    bubble.setAttribute("role", "status");
+    bubble.appendChild(el("span", "sr-only", "답변을 준비하고 있어요"));
     bubble.appendChild(el("span"));
     bubble.appendChild(el("span"));
     bubble.appendChild(el("span"));
@@ -62,6 +70,16 @@
   }
   function removeAll(selector) {
     thread.querySelectorAll(selector).forEach(function (n) { n.remove(); });
+  }
+  function pendingNode() {
+    var row = el("div", "msg-pending");
+    row.setAttribute("data-pending", "");
+    row.setAttribute("role", "status");
+    row.appendChild(el("span", null, MSG_PENDING));
+    var link = el("a", "btn btn-secondary btn-sm", "새로고침");
+    link.href = window.location.pathname;
+    row.appendChild(link);
+    return row;
   }
   function errorNode(message, retryable) {
     var row = el("div", "msg-error");
@@ -81,7 +99,10 @@
       sendBtn.classList.toggle("is-loading", value);
       updateSendState();
     }
-    if (input) input.setAttribute("aria-busy", value ? "true" : "false");
+    if (input) {
+      input.readOnly = value; // keeps the mobile keyboard open, blocks edits while sending
+      input.setAttribute("aria-busy", value ? "true" : "false");
+    }
   }
   function updateSendState() {
     if (!sendBtn) return;
@@ -90,7 +111,7 @@
   function autoResize() {
     if (!input) return;
     input.style.height = "auto";
-    input.style.height = Math.min(input.scrollHeight, 160) + "px";
+    input.style.height = Math.max(44, Math.min(input.scrollHeight, 160)) + "px";
   }
   function applyStatus(status) {
     if (!status) return;
@@ -138,16 +159,26 @@
       window.location.href = "/login?next=" + encodeURIComponent(window.location.pathname);
       return;
     } else {
-      if (userRow && !data.user_message && data.error !== "ai_failed") {
-        // The message was rejected before it was saved (validation, limits).
-        userRow.remove();
-        if (input && !input.value) input.value = userRow.querySelector(".bubble").lastChild.textContent;
-      }
-      if (data.error === "hard_limit") {
+      if (data.error === "hard_limit" || data.error === "not_found") {
         window.location.reload();
         return;
       }
-      thread.appendChild(errorNode(data.message || MSG_FAILED, data.retryable === true));
+      if (userRow && PRE_SAVE[data.error]) {
+        // Rejected before it was stored: give the text back instead of a ghost bubble.
+        userRow.remove();
+        if (input && !input.value) {
+          input.value = userRow.querySelector(".bubble").lastChild.textContent;
+          autoResize();
+        }
+      }
+      if (data.error === "in_progress") {
+        thread.appendChild(pendingNode());
+      } else if (data.error) {
+        thread.appendChild(errorNode(data.message || MSG_FAILED, data.retryable === true));
+      } else {
+        // Proxy error / non-JSON: the message may or may not have been stored.
+        thread.appendChild(errorNode(MSG_NETWORK, !!conversationId));
+      }
     }
     scrollToBottom(true);
   }
@@ -193,7 +224,7 @@
     setBusy(true);
     post("/api/conversations/" + encodeURIComponent(conversationId) + "/retry")
       .then(function (result) {
-        if (result.data && result.data.error === "nothing_to_retry") {
+        if (result.data && (result.data.error === "nothing_to_retry" || result.data.error === "conflict")) {
           window.location.reload();
           return;
         }

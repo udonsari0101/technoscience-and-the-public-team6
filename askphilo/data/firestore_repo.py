@@ -14,6 +14,7 @@ import threading
 from .base import (
     EMPTY_USAGE,
     SCHEMA_VERSION,
+    Conflict,
     DataError,
     DataUnavailable,
     NotFound,
@@ -178,7 +179,7 @@ class FirestoreRepository(Repository):
     # ---- messages ------------------------------------------------------------------
     @_guard
     def append_messages(self, user_id, conversation_id, messages, *,
-                        conversation_updates=None, usage_increments=None):
+                        conversation_updates=None, usage_increments=None, expect_count=None):
         from google.cloud import firestore as gcf
 
         conv_ref = self._conv_ref(user_id, conversation_id)
@@ -192,6 +193,8 @@ class FirestoreRepository(Repository):
                 raise NotFound(conversation_id)
             conv = snap.to_dict()
             index = conv.get("message_count", 0)
+            if expect_count is not None and index != expect_count:
+                raise Conflict(conversation_id)
             stored = []
             for msg in messages:
                 doc = dict(msg)
@@ -303,6 +306,10 @@ class FirestoreRepository(Repository):
         doc["updated_at"] = utcnow()
         doc.setdefault("schema_version", SCHEMA_VERSION)
         self._memory_ref(user_id).set(doc)
+
+    @_guard
+    def delete_user_memory(self, user_id):
+        self._memory_ref(user_id).delete()
 
     # ---- developer tooling -------------------------------------------------------------
     @_guard

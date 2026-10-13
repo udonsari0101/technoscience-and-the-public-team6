@@ -24,7 +24,7 @@ from dotenv import load_dotenv  # noqa: E402
 load_dotenv(ROOT / ".env")
 
 from askphilo.config import resolve_credentials_path  # noqa: E402
-from askphilo.data.base import UsernameTaken, utcnow  # noqa: E402
+from askphilo.data.base import Conflict, UsernameTaken, utcnow  # noqa: E402
 from askphilo.data.firestore_repo import FirestoreRepository  # noqa: E402
 
 
@@ -74,6 +74,11 @@ def main() -> int:
             conversation_updates={"title": "스모크 테스트"},
             usage_increments={"mock_calls": 1}))
         assert [m["message_index"] for m in stored] == [0, 1]
+        try:
+            repo.append_messages(user_id, conv_id, [{"role": "assistant", "content": "x"}], expect_count=1)
+            raise AssertionError("expect_count mismatch was accepted")
+        except Conflict:
+            steps.append(("expect_count_conflict", 0))
         msgs = step("get_messages(limit)", lambda: repo.get_messages(user_id, conv_id, limit=1))
         assert [m["message_index"] for m in msgs] == [1]
         ok = step("update_summary", lambda: repo.update_summary(
@@ -88,6 +93,8 @@ def main() -> int:
         assert listed and listed[0]["id"] == conv_id
         step("set_user_memory", lambda: repo.set_user_memory(user_id, {"preferences": ["짧은 답변"]}))
         assert repo.get_user_memory(user_id)["preferences"] == ["짧은 답변"]
+        step("delete_user_memory", lambda: repo.delete_user_memory(user_id))
+        assert repo.get_user_memory(user_id) is None
         deleted = step("delete_conversation", lambda: repo.delete_conversation(user_id, conv_id))
         assert deleted and repo.get_conversation(user_id, conv_id) is None
         assert repo.get_messages(user_id, conv_id) == []

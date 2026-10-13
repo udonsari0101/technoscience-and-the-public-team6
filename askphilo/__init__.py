@@ -42,8 +42,14 @@ def create_app(overrides: dict | None = None) -> Flask:
 
     _configure_logging(app)
 
-    # Render terminates TLS at its proxy; trust one hop for scheme/host.
-    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+    # Render: client → Cloudflare edge → Render LB → app. Both proxies append
+    # to X-Forwarded-For, so the client is 3rd from the right; the scheme comes
+    # from X-Forwarded-Proto (set by Render). Host headers are not trusted.
+    # client_ip() prefers Cloudflare's True-Client-IP, which cannot be spoofed.
+    if app.config.get("ON_RENDER"):
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=3, x_proto=1)
+    else:
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 
     creds = resolve_credentials_path(app.config["FIREBASE_CREDENTIALS_PATH"])
     app.config["FIREBASE_CONFIGURED"] = bool(creds and creds.is_file())
@@ -90,3 +96,6 @@ def _configure_logging(app: Flask) -> None:
             format="%(asctime)s %(levelname)s %(name)s: %(message)s",
         )
     log.setLevel(level)
+    # The SDKs log full request bodies (system prompt, conversation) at DEBUG.
+    for noisy in ("anthropic", "httpx", "httpx2", "httpcore", "urllib3", "google", "grpc"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)

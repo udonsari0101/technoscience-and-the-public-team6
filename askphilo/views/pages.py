@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from flask import Blueprint, g, redirect, render_template, url_for
+from flask import Blueprint, flash, g, redirect, render_template, url_for
 
 from ..auth import current_user, login_required
 from ..data import get_repository
@@ -20,7 +20,17 @@ def home():
 @bp.get("/settings")
 @login_required
 def settings():
-    return render_template("settings.html")
+    memory = get_repository().get_user_memory(g.user["uid"]) or {}
+    return render_template("settings.html", memory=memory)
+
+
+@bp.post("/settings/memory/clear")
+@login_required
+def clear_memory():
+    """Forget the cross-conversation memory (values/preferences)."""
+    get_repository().delete_user_memory(g.user["uid"])
+    flash("상담 기억을 지웠어요.", "success")
+    return redirect(url_for("pages.settings"))
 
 
 def landing_redirect():

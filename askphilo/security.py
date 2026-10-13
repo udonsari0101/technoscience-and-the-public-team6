@@ -42,7 +42,10 @@ def csrf_token() -> str:
 def _csrf_valid() -> bool:
     expected = session.get("csrf_token")
     sent = request.headers.get("X-CSRF-Token") or request.form.get("csrf_token")
-    return bool(expected and sent and hmac.compare_digest(str(expected), str(sent)))
+    if not expected or not sent:
+        return False
+    # Compare bytes: compare_digest raises TypeError on non-ASCII str input.
+    return hmac.compare_digest(str(expected).encode("utf-8"), str(sent).encode("utf-8"))
 
 
 def _is_api() -> bool:

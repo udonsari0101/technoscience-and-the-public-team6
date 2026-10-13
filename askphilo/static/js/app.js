@@ -132,7 +132,13 @@
   document.addEventListener("keydown", function (event) {
     if (event.key !== "Escape") return;
     document.querySelectorAll("[data-menu]").forEach(function (menu) {
+      if (menu.hidden) return;
       menu.hidden = true;
+      var toggle = document.querySelector('[aria-controls="' + menu.id + '"]');
+      if (toggle) {
+        toggle.setAttribute("aria-expanded", "false");
+        toggle.focus(); // return focus to the control that opened the menu
+      }
     });
   });
 })();

@@ -45,9 +45,14 @@ CONTENT_PATTERNS = {
 }
 
 
+# Repository whose files are checked (default: this one). Literal secret
+# values are always read from ROOT's own .env / secrets/ folder.
+REPO = ROOT
+
+
 def _git(*args: str) -> str:
     return subprocess.run(
-        ["git", *args], cwd=ROOT, capture_output=True, check=True
+        ["git", *args], cwd=REPO, capture_output=True, check=True
     ).stdout.decode("utf-8", "replace")
 
 
@@ -91,7 +96,7 @@ def _files(all_tracked: bool) -> list[str]:
 def _content(path: str, all_tracked: bool) -> str:
     try:
         if all_tracked:
-            return (ROOT / path).read_text(encoding="utf-8", errors="replace")
+            return (REPO / path).read_text(encoding="utf-8", errors="replace")
         return _git("show", f":{path}")
     except (OSError, subprocess.CalledProcessError):
         return ""
@@ -134,6 +139,9 @@ def main(argv: list[str]) -> int:
     if "--install-hook" in argv:
         install_hook()
         return 0
+    global REPO
+    if "--repo" in argv:
+        REPO = Path(argv[argv.index("--repo") + 1]).resolve()
     all_tracked = "--all" in argv
     problems = check(all_tracked)
     scope = "tracked" if all_tracked else "staged"

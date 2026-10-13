@@ -347,12 +347,19 @@ def _lighten_for_dark_mode(hex_color: str) -> str:
     return f"#{mix(r):02X}{mix(g):02X}{mix(b):02X}"
 
 
+def _darken(hex_color: str, amount: float = 0.15) -> str:
+    """Darker accent for small chip text (>= 4.5:1 on the soft tint)."""
+    r, g, b = (int(hex_color[i:i + 2], 16) for i in (1, 3, 5))
+    return "#%02X%02X%02X" % tuple(round(c * (1 - amount)) for c in (r, g, b))
+
+
 def philosopher_css() -> str:
     """Per-philosopher colour tokens (served as a stylesheet; CSP forbids inline styles)."""
     rules = []
     for p in PHILOSOPHERS:
         rules.append(
             f".ph-{p['id']}{{--ph:{p['color']};--ph-soft:{p['color_soft']};"
+            f"--ph-ink:{_darken(p['color'])};"
             f"--ph-on-dark:{_lighten_for_dark_mode(p['color'])};}}"
         )
     return "\n".join(rules) + "\n"

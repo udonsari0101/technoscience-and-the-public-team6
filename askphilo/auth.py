@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import functools
+import ipaddress
 import secrets
+from urllib.parse import urlsplit
 
-from flask import g, jsonify, redirect, request, session, url_for
+from flask import current_app, g, jsonify, redirect, request, session, url_for
 
 SESSION_KEYS = ("uid", "name", "username")
 
@@ -34,8 +36,19 @@ def wants_json() -> bool:
 
 
 def safe_next(target: str | None) -> str | None:
-    """Only allow same-site relative paths as post-login redirects."""
-    if not target or not target.startswith("/") or target.startswith("//") or "\\" in target:
+    """Only allow same-site relative paths as post-login redirects.
+
+    Rejects control characters/whitespace too: urlsplit() strips TAB/CR/LF,
+    so "/<TAB>/evil.com" would otherwise become the protocol-relative "//evil.com".
+    """
+    if not target or len(target) > 512:
+        return None
+    if any(ord(ch) < 0x21 or ord(ch) == 0x7F for ch in target) or "\\" in target:
+        return None
+    if not target.startswith("/") or target.startswith("//"):
+        return None
+    parts = urlsplit(target)
+    if parts.scheme or parts.netloc:
         return None
     return target
 
@@ -54,5 +67,23 @@ def login_required(view):
     return wrapper
 
 
+def _valid_ip(value: str | None) -> str | None:
+    try:
+        return str(ipaddress.ip_address((value or "").strip()))
+    except ValueError:
+        return None
+
+
 def client_ip() -> str:
+    """Client address for rate limiting.
+
+    On Render every request passes Cloudflare, which overwrites
+    True-Client-IP / CF-Connecting-IP with the real client address; off
+    Render these headers are client-controlled and therefore ignored.
+    """
+    if current_app.config.get("ON_RENDER"):
+        for header in ("True-Client-IP", "CF-Connecting-IP"):
+            ip = _valid_ip(request.headers.get(header))
+            if ip:
+                return ip
     return request.remote_addr or "unknown"

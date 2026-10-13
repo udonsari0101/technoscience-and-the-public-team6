@@ -63,18 +63,23 @@ def login():
         username = request.form.get("username", "")
         password = request.form.get("password", "")
         limiter = get_limiter()
-        user_key = f"login-user:{accounts.normalize_username(username)}"
         ip_key = f"login-ip:{client_ip()}"
-        if not (limiter.allowed(user_key, LOGIN_FAILS_PER_USER, LOGIN_WINDOW)
-                and limiter.allowed(ip_key, LOGIN_FAILS_PER_IP, LOGIN_WINDOW)):
+        # Keys never contain raw input: invalid usernames share one bucket.
+        normalized = accounts.normalize_username(username)
+        user_key = (f"login-user:{normalized}" if accounts.is_valid_username(normalized)
+                    else "login-user:<invalid>")
+        if not (limiter.allowed(ip_key, LOGIN_FAILS_PER_IP, LOGIN_WINDOW)
+                and limiter.allowed(user_key, LOGIN_FAILS_PER_USER, LOGIN_WINDOW)):
             error = MSG_SLOW_DOWN
-            return render_template("auth/login.html", username=username, error=error, next=next_url), 429
+            return render_template("auth/login.html", username=username[:20], error=error,
+                                   next=next_url), 429
         user = accounts.authenticate(get_repository(), username=username, password=password)
         if user is None:
-            limiter.record(user_key)
-            limiter.record(ip_key)
+            limiter.record(ip_key, LOGIN_WINDOW)
+            limiter.record(user_key, LOGIN_WINDOW)
             error = accounts.MSG["login_failed"]
-            return render_template("auth/login.html", username=username, error=error, next=next_url), 400
+            return render_template("auth/login.html", username=username[:20], error=error,
+                                   next=next_url), 400
         limiter.reset(user_key)
         get_repository().record_login(user["id"])
         login_user(user)

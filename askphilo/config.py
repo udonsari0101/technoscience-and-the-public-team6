@@ -99,7 +99,10 @@ def load_config(env=None) -> dict:
         "ANTHROPIC_THINKING_HEADROOM_TOKENS": _int(env, "ANTHROPIC_THINKING_HEADROOM_TOKENS", 1024),
         "ANTHROPIC_TIMEOUT_SECONDS": _int(env, "ANTHROPIC_TIMEOUT_SECONDS", 45, minimum=5),
         "ANTHROPIC_PROMPT_CACHE": _bool(env, "ANTHROPIC_PROMPT_CACHE", True),
-        "ANTHROPIC_REFUSAL_FALLBACK": _bool(env, "ANTHROPIC_REFUSAL_FALLBACK", True),
+        # Off by default: a server-side fallback re-runs a refused request on
+        # another model (billed again), which the one-generation-per-message
+        # rule does not allow unless the operator opts in.
+        "ANTHROPIC_REFUSAL_FALLBACK": _bool(env, "ANTHROPIC_REFUSAL_FALLBACK", False),
         "CONTROLLER_VERSION": _str(env, "CONTROLLER_VERSION", "v1"),
         "CONTROLLER_ENABLED": _bool(env, "CONTROLLER_ENABLED", True),
         "MAX_CONTEXT_MESSAGES": _int(env, "MAX_CONTEXT_MESSAGES", 10, minimum=2),
@@ -110,6 +113,9 @@ def load_config(env=None) -> dict:
         "SUMMARY_MAX_OUTPUT_TOKENS": _int(env, "SUMMARY_MAX_OUTPUT_TOKENS", 600, minimum=100),
         "MAX_USER_MESSAGE_CHARS": _int(env, "MAX_USER_MESSAGE_CHARS", 2000, minimum=100),
         "CHAT_MESSAGES_PER_MINUTE": _int(env, "CHAT_MESSAGES_PER_MINUTE", 12, minimum=1),
+        "CHAT_MESSAGES_PER_DAY": _int(env, "CHAT_MESSAGES_PER_DAY", 200, minimum=1),
+        # Site-wide circuit breaker on reply requests (cost ceiling).
+        "AI_REPLIES_PER_HOUR": _int(env, "AI_REPLIES_PER_HOUR", 600, minimum=1),
         "MOCK_AI_DELAY_MS": _int(env, "MOCK_AI_DELAY_MS", 500),
         "ENABLE_DEV_ROUTES": _bool(env, "ENABLE_DEV_ROUTES", not is_production),
         # Flask / session hardening
@@ -120,4 +126,6 @@ def load_config(env=None) -> dict:
         "PERMANENT_SESSION_LIFETIME": 60 * 60 * 24 * 30,
         "MAX_CONTENT_LENGTH": 64 * 1024,
         "RENDER_GIT_COMMIT": _str(env, "RENDER_GIT_COMMIT", ""),
+        # Render sets RENDER=true on its services; only then are proxy headers trusted.
+        "ON_RENDER": _str(env, "RENDER", "").lower() == "true",
     }

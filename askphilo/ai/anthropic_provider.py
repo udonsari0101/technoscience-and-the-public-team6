@@ -4,7 +4,7 @@ Cost rules enforced here:
   * one HTTP request per reply — SDK auto-retries are disabled (max_retries=0)
   * nothing is sent at import/startup; the client is created on first use
   * prompt caching on the stable prefix (system → context → turns)
-  * refusals fall back server-side inside the same request where supported
+  * optional (off by default) server-side refusal fallback where supported
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ class AnthropicProvider(AIProvider):
     def __init__(self, *, api_key: str, model: str, summary_model: str | None = None,
                  effort: str = "low", thinking_headroom: int = 1024,
                  timeout: float = 45.0, prompt_cache: bool = True,
-                 refusal_fallback: bool = True):
+                 refusal_fallback: bool = False):
         self.api_key = api_key
         self.model = model
         self.summary_model = summary_model or model
@@ -82,10 +82,17 @@ class AnthropicProvider(AIProvider):
         if thinking:
             params["thinking"] = thinking
             params["max_tokens"] = max_tokens
+            if self.effort in ("xhigh", "max"):
+                # Thinking-off modes are only accepted at effort high or below.
+                params["output_config"] = {"effort": "high"}
         else:
             # Thinking shares max_tokens with the visible reply.
             params["max_tokens"] = max_tokens + self.thinking_headroom
         if self.prompt_cache:
+            # Breakpoint 1: the static system prompt (survives summary rewrites).
+            params["system"] = [{"type": "text", "text": system,
+                                 "cache_control": {"type": "ephemeral"}}]
+            # Breakpoint 2 (automatic): the end of the append-only conversation.
             params["cache_control"] = {"type": "ephemeral"}
         try:
             if self.refusal_fallback and model in FALLBACK_MODELS:
@@ -163,11 +170,14 @@ class AnthropicProvider(AIProvider):
                               messages=[{"role": "user", "content": prompt}],
                               max_tokens=max_tokens)
         usage = self._usage(response)
-        if getattr(response, "stop_reason", None) == "refusal":
+        stop = getattr(response, "stop_reason", None)
+        if stop == "refusal":
             err = AIError("refusal")
             err.usage = usage
             raise err
         summary, memory = parse_summary_output(self._text(response))
+        if stop == "max_tokens":
+            memory = None  # a cut-off answer must never overwrite stored memory
         if not summary:
             err = AIError("summary_unparseable")
             err.usage = usage
