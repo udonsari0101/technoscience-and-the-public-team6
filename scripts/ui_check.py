@@ -63,6 +63,7 @@ with sync_playwright() as p:
     page.fill("#name", "브라우저")
     username = "ui_" + secrets.token_hex(3)
     page.fill("#username", username)
+    print(f"UI_CHECK_USER={username}", flush=True)  # lets callers clean up exactly this account
     page.fill("#password", "password123")
     page.fill("#password_confirm", "password123")
     page.click("[data-reveal=password]")
