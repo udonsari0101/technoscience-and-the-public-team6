@@ -175,16 +175,24 @@ def test_missing_prompt_file_fails_loudly():
 
 
 @pytest.mark.parametrize("pid", [p["id"] for p in PHILOSOPHERS])
+@pytest.mark.parametrize("message", ["고마워", "응 맞아", "요즘 마음이 복잡해", "그냥 좀 지쳤어"])
+def test_mock_short_message_gets_short_reply(pid, message):
+    text = mock_reply(pid, message)
+    assert len(text) <= 80, (len(text), text)
+    assert text.endswith("?")
+
+
+@pytest.mark.parametrize("pid", [p["id"] for p in PHILOSOPHERS])
 @pytest.mark.parametrize("message", [
-    "요즘 마음이 복잡해",
     "남친이 연락을 잘 안 해. 나 안 좋아하는 걸까?",
     "그냥 네가 결정해줘. 헤어질까 말까?",
     "사귄 지 1년 됐는데 요즘 같은 문제로 계속 싸워",
     "질투가 너무 나서 힘들어",
+    "요즘 애인을 만나도 예전만큼 즐겁지가 않아서 고민이야",
 ])
-def test_mock_replies_are_short(pid, message):
+def test_mock_concern_reply_stays_in_range(pid, message):
     text = mock_reply(pid, message)
-    assert len(text) <= 200, (len(text), text)
+    assert 60 <= len(text) <= 150, (len(text), text)
     assert text.count(".") + text.count("?") + text.count("!") <= 3, text
     assert text.endswith("?")
 
@@ -197,7 +205,9 @@ def test_mock_does_not_sugar_coat_partner_wrongdoing(pid):
 
 
 def test_style_and_controller_reflect_team_rules():
-    assert "150자 안팎" in prompts.STYLE and "200자" in prompts.STYLE
+    assert "기본은 짧은 쪽" in prompts.STYLE
+    assert "80자 이내" in prompts.STYLE and "80~150자" in prompts.STYLE and "200자 이내" in prompts.STYLE
+    assert "늘이지 않는다" in prompts.STYLE
     assert "열린 질문 하나" in prompts.STYLE
     assert "좋게만 해석하지 않는다" in prompts.CONTROLLER_V1
     assert "사용자가 말한 상황만 다룬다" in prompts.CONTROLLER_V1
@@ -209,5 +219,5 @@ def test_style_and_controller_reflect_team_rules():
 def test_mock_reply_carries_a_signature_idea(pid):
     from askphilo.ai.mock import SIGNATURES
 
-    text = mock_reply(pid, "요즘 마음이 복잡해")
+    text = mock_reply(pid, "요즘 애인을 만나도 예전만큼 즐겁지가 않아서 고민이야")
     assert any(s in text for s in SIGNATURES[pid])

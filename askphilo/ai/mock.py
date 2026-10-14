@@ -1,7 +1,8 @@
 """Deterministic mock provider (AI_MODE=mock): realistic replies, zero API cost.
 
 Replies are assembled from each philosopher's mock material
-(empathy + one lens-specific idea + question, about 150 characters) and
+(empathy + question for short remarks, empathy + one lens-specific idea +
+question otherwise; about 50–140 characters) and
 follow the same controller rules as the real prompt: no decisions, no
 mind-reading, no sugar-coating, injection refusal and a safety-first branch.
 """
@@ -58,6 +59,10 @@ SELF_BLAME_KEYWORDS = ("내 탓", "내탓", "내 잘못", "내가 예민", "내�
 HONEST_LEAD = "돌아보려는 마음은 좋지만, 상대가 한 행동의 책임까지 네가 질 필요는 없어."
 HONEST_CORE = "그런 일이 반복된다면 네가 예민해서라기보다 신뢰를 깎는 행동 자체가 문제일 수 있어."
 HONEST_QUESTION = "이 관계에서 네가 받아들일 수 있는 것과 없는 건 각각 뭐야?"
+# Messages this short ("고마워", "요즘 마음이 복잡해") get a lead + question only.
+SHORT_MESSAGE_CHARS = 20
+THANKS_KEYWORDS = ("고마워", "고맙", "감사", "땡큐")
+THANKS_LEAD = "도움이 됐다니 다행이야."
 INTENT_KEYWORDS = ("무시하는 거지", "나 무시", "좋아하는 거 맞지", "좋아하는 거지", "마음이 식은 거지")
 
 # Evaluation only (CONTROLLER_ENABLED=false, never in production): imitate the
@@ -94,25 +99,25 @@ def _seed(*parts: str) -> int:
 # mock answers (like the real prompt) make it obvious which philosopher speaks.
 SIGNATURES = {
     "plato": [
-        "사랑을 '좋은 것을 늘 곁에 두고 싶은 마음'으로 본다면, 지금 네 마음이 붙잡고 싶은 좋은 게 무엇인지가 핵심일 수 있어.",
+        "사랑이 좋은 것을 늘 곁에 두고 싶은 마음이라면, 지금 네가 붙잡고 싶은 좋음이 핵심일 거야.",
         "눈에 보이는 행동은 그림자 같은 거라서, 그 뒤에서 네가 진짜 바라는 걸 찾아야 고민이 풀릴 때가 많아.",
-        "끌림은 겉모습에서 시작해도 그 사람의 됨됨이, 함께 바라보는 가치로 깊어질 수 있으니 지금 네 마음이 어디쯤 머무는지 보면 좋겠어.",
+        "끌림은 겉모습에서 시작해도 그 사람의 됨됨이, 함께 바라보는 가치로 깊어질 수 있어.",
         "내가 답을 정해 주기보다, 질문을 따라가다 보면 네가 이미 품고 있던 답을 스스로 꺼내게 될 거야.",
     ],
     "aristotle": [
-        "사람은 반복하는 행동대로 만들어진다고 나는 봐서, 한 번의 말보다 쌓여 온 습관이 이 관계를 더 정확히 보여줄 거야.",
+        "사람은 반복하는 행동대로 만들어져서, 한 번의 말보다 쌓인 습관이 관계를 더 잘 보여줘.",
         "지나치게 참는 것과 지나치게 몰아붙이는 것 사이 어딘가에 너에게 맞는 중용이 있어.",
         "관계는 이익 때문에, 즐거움 때문에, 서로의 사람됨을 아껴서 이어지는데 오래가는 건 대개 마지막 경우야.",
-        "좋은 연인은 서로가 잘되길 바라는 또 하나의 나 같은 존재라서, 이 사람 곁에서 네가 더 너다워지는지도 볼 만해.",
+        "좋은 연인은 서로 잘되길 바라는 또 하나의 나라서, 이 사람 곁에서 네가 더 너다워지는지가 중요해.",
     ],
     "epicurus": [
-        "바람에는 꼭 필요한 것, 자연스럽지만 없어도 되는 것, 불안이 부풀린 것이 섞여 있어서 셋을 나눠 보면 마음이 가벼워져.",
+        "바람에는 꼭 필요한 것, 없어도 되는 것, 불안이 부풀린 것이 섞여 있어서 나눠 보면 가벼워져.",
         "내가 말하는 즐거움은 들뜬 쾌락이 아니라 마음이 흔들리지 않는 평온, 아타락시아에 가까워.",
         "지금 불안을 덜어 주는 선택과 며칠 뒤에도 편안한 선택은 다를 수 있으니 둘을 나란히 놓고 따져 보자.",
-        "삶을 기쁘게 하는 것 가운데 믿을 수 있는 우정만 한 게 없다고 나는 생각해서, 이 관계가 그런 안심을 주는지도 궁금해.",
+        "삶을 기쁘게 하는 것 중에 믿을 수 있는 우정만 한 게 없어서, 이 관계가 그런 안심을 주는지 궁금해.",
     ],
     "nietzsche": [
-        "참고 넘기는 게 착함처럼 보여도 속에서 원망, 르상티망으로 쌓이고 있다면 그건 너를 지키는 방식이 아닐 수 있어.",
+        "참는 게 착함처럼 보여도 속에서 원망, 르상티망으로 쌓인다면 너를 지키는 방식이 아닐 수 있어.",
         "남이 정해 준 좋은 연애의 기준보다 네가 스스로 세운 기준으로 살 때 비로소 너 자신이 되어 가는 거야.",
         "지금의 이 관계를 똑같이 끝없이 되풀이해야 한다면 기꺼이 그러겠다고 말할 수 있을지 한번 떠올려 봐.",
         "사랑은 결국 긴 대화 같은 거라서, 나이 들어서도 이 사람과 계속 이야기 나누고 싶은지가 중요한 물음이야.",
@@ -190,28 +195,36 @@ class MockProvider(AIProvider):
         elif _has(last, WRONGDOING_KEYWORDS) and _has(last, SELF_BLAME_KEYWORDS):
             text = " ".join((HONEST_LEAD, HONEST_CORE, HONEST_QUESTION))
         else:
-            # One idea per reply keeps it short: the philosopher's take on the
-            # topic when there is one, otherwise a signature idea.
             topic = detect_topic(last)
-            core = mock["topic_reframes"].get(topic) if topic else None
-            if core and core in recent:
-                core = None
-            if not core:
-                signatures = SIGNATURES.get(philosopher["id"], [])
-                fresh_signatures = [s for s in signatures if s not in recent] or signatures
-                core = _pick(fresh_signatures, seed, 3) if signatures else _pick(fresh_reframes, seed, 1)
-            if _has(last, AUTHORITY_KEYWORDS):
+            authority = _has(last, AUTHORITY_KEYWORDS)
+            decision = _has(last, DECISION_KEYWORDS)
+            if authority:
                 lead = AUTHORITY_LEAD
-            elif _has(last, DECISION_KEYWORDS):
+            elif decision:
                 lead = DECISION_LEAD
             else:
                 fresh_empathy = [e for e in mock["empathy"] if e not in recent] or mock["empathy"]
                 lead = _pick(fresh_empathy, seed)
-            if _keywords(core) & _keywords(question):
-                # Don't ask about the very idea the previous sentence just raised.
-                distinct = [q for q in fresh_questions if not (_keywords(core) & _keywords(q))]
-                question = _pick(distinct, seed, 2) if distinct else question
-            text = " ".join((lead, core, question))
+            if len(last.strip()) <= SHORT_MESSAGE_CHARS and not (topic or authority or decision):
+                # A short remark gets a short reply, like the live style rule.
+                if _has(last, THANKS_KEYWORDS):
+                    lead = THANKS_LEAD
+                text = " ".join((lead, question))
+            else:
+                # One idea in between: the philosopher's take on the topic when
+                # there is one, otherwise a signature idea.
+                core = mock["topic_reframes"].get(topic) if topic else None
+                if core and core in recent:
+                    core = None
+                if not core:
+                    signatures = SIGNATURES.get(philosopher["id"], [])
+                    fresh_signatures = [s for s in signatures if s not in recent] or signatures
+                    core = _pick(fresh_signatures, seed, 3) if signatures else _pick(fresh_reframes, seed, 1)
+                if _keywords(core) & _keywords(question):
+                    # Don't ask about the very idea the previous sentence just raised.
+                    distinct = [q for q in fresh_questions if not (_keywords(core) & _keywords(q))]
+                    question = _pick(distinct, seed, 2) if distinct else question
+                text = " ".join((lead, core, question))
         return AIReply(text=text, provider=self.name, model=self.model,
                        usage=AIUsage(), stop_reason="end_turn",
                        title=mock_title(user_turns[0]) if want_title and user_turns else None)
