@@ -28,9 +28,11 @@ from datetime import timedelta
 
 from ..ai import AIError, AIProvider
 from ..ai import prompts
+from ..ai.prompts import clean_title
 from ..data import Conflict, DataError, Repository
 from ..data.base import SCHEMA_VERSION, utcnow
 from ..philosophers import get_philosopher
+from .quota import MSG_DAILY_LIMIT, daily_status, today_kst
 
 log = logging.getLogger("askphilo.chat")
 
@@ -48,6 +50,9 @@ MSG_NOT_FOUND = "대화를 찾을 수 없어요."
 MSG_NOTHING_TO_RETRY = "다시 받을 답변이 없어요."
 MSG_BAD_PHILOSOPHER = "철학자를 다시 선택해 주세요."
 MSG_CONFLICT = "대화가 다른 곳에서 바뀌었어요. 새로고침해 주세요."
+MSG_TITLE_EMPTY = "대화 이름을 입력해 주세요."
+MSG_TITLE_LONG = "대화 이름은 30자 이내로 입력해 주세요."
+USER_TITLE_MAX = 30
 
 # reply_state on the conversation document
 REPLY_PENDING, REPLY_FAILED, REPLY_DONE = "pending", "failed", "done"
@@ -75,6 +80,7 @@ class ChatSettings:
     hard_limit: int = 300
     max_user_chars: int = 2000
     reply_grace_seconds: int = 60  # a pending reply younger than this is "in progress"
+    daily_limit: int = 200  # questions per user per KST day
 
     @classmethod
     def from_config(cls, cfg) -> "ChatSettings":
@@ -90,6 +96,7 @@ class ChatSettings:
             hard_limit=max(cfg["HARD_CONVERSATION_MESSAGE_LIMIT"], cfg["SOFT_CONVERSATION_MESSAGE_LIMIT"]),
             max_user_chars=cfg["MAX_USER_MESSAGE_CHARS"],
             reply_grace_seconds=cfg["ANTHROPIC_TIMEOUT_SECONDS"] + 15,
+            daily_limit=cfg["CHAT_MESSAGES_PER_DAY"],
         )
 
 
@@ -192,6 +199,7 @@ class ConversationService:
             "philosopher_id": philosopher["id"],
             "philosopher_name": philosopher["name"],
             "title": "",
+            "title_source": None,  # "auto" (first message) · "ai" · "user"
             "controller_version": self.settings.controller_version,
             "controller_enabled": self.settings.controller_enabled or self.settings.force_controller,
             "schema_version": SCHEMA_VERSION,
@@ -252,21 +260,30 @@ class ConversationService:
             status = limit_status(conv.get("message_count", 0), self.settings)
             if status["hard_limit_reached"]:
                 raise ChatError("hard_limit", MSG_HARD_LIMIT, 409, status=status)
-            updates = {"reply_state": REPLY_PENDING}
-            if not conv.get("title"):
-                updates["title"] = make_title(text)
-            # 1) Persist the user's message first — an AI failure must never lose it.
-            stored = self.repo.append_messages(user_id, conversation_id, [{
-                "role": "user",
-                "content": text,
-                "provider": None,
-                "model": None,
-                "input_tokens": None,
-                "output_tokens": None,
-                "controller_version": conv.get("controller_version", self.settings.controller_version),
-            }], conversation_updates=updates)
-            # 2) Exactly one reply request.
-            return self._reply(user_id, conv, stored[0])
+            day, used = self._reserve(user_id)
+            try:
+                updates = {"reply_state": REPLY_PENDING}
+                if not conv.get("title"):
+                    # Instant placeholder; the first reply refines it (same API call).
+                    updates["title"] = make_title(text)
+                    updates["title_source"] = "auto"
+                # 1) Persist the user's message first — an AI failure must never lose it.
+                stored = self.repo.append_messages(user_id, conversation_id, [{
+                    "role": "user",
+                    "content": text,
+                    "provider": None,
+                    "model": None,
+                    "input_tokens": None,
+                    "output_tokens": None,
+                    "controller_version": conv.get("controller_version", self.settings.controller_version),
+                }], conversation_updates=updates)
+                # 2) Exactly one reply request.
+                result = self._reply(user_id, conv, stored[0])
+            except Exception:
+                self._refund(user_id, day)
+                raise
+            result["daily"] = daily_status(used, self.settings.daily_limit)
+            return result
 
     def retry(self, user_id: str, conversation_id: str) -> dict:
         """Explicit user retry for the unanswered last user message."""
@@ -283,8 +300,34 @@ class ConversationService:
             last = self.repo.get_messages(user_id, conversation_id, limit=1)
             if not last or last[0]["role"] != "user":
                 raise ChatError("nothing_to_retry", MSG_NOTHING_TO_RETRY, 409)
-            self.repo.set_conversation_fields(user_id, conversation_id, {"reply_state": REPLY_PENDING})
-            return self._reply(user_id, conv, last[0])
+            day, used = self._reserve(user_id)
+            try:
+                self.repo.set_conversation_fields(user_id, conversation_id, {"reply_state": REPLY_PENDING})
+                result = self._reply(user_id, conv, last[0])
+            except Exception:
+                self._refund(user_id, day)
+                raise
+            result["daily"] = daily_status(used, self.settings.daily_limit)
+            return result
+
+    # ---- daily allowance -------------------------------------------------------------
+    def daily(self, user_id: str) -> dict:
+        """Today's question allowance (KST day) for display."""
+        return daily_status(self.repo.get_daily_usage(user_id, today_kst()), self.settings.daily_limit)
+
+    def _reserve(self, user_id: str) -> tuple[str, int]:
+        day = today_kst()
+        used = self.repo.reserve_daily_message(user_id, day, self.settings.daily_limit)
+        if used is None:
+            limit = self.settings.daily_limit
+            raise ChatError("daily_limit", MSG_DAILY_LIMIT, 429, daily=daily_status(limit, limit))
+        return day, used
+
+    def _refund(self, user_id: str, day: str) -> None:
+        try:
+            self.repo.refund_daily_message(user_id, day)
+        except DataError:
+            log.warning("could not refund daily question user=%s", user_id)
 
     def _system_prompt(self, conv: dict, philosopher: dict) -> str:
         enabled = True if self.settings.force_controller else conv.get("controller_enabled", True)
@@ -311,14 +354,25 @@ class ConversationService:
         system, messages, philosopher, _ = self._context(user_id, conv)
         return {"system": system, "messages": messages, "philosopher_id": philosopher["id"]}
 
+    def _track_day(self, increments: dict, *, replies: int = 0) -> None:
+        """Service-wide per-day counters for the admin dashboard (best effort)."""
+        data = dict(increments or {})
+        if replies:
+            data["replies"] = replies
+        try:
+            self.repo.record_usage_day(today_kst(), data)
+        except DataError:
+            log.warning("could not record daily usage")
+
     def _fail(self, user_id: str, conversation_id: str, user_message: dict, reason: str,
               usage=None, billed: bool = False) -> ChatError:
         log.warning("reply failed conv=%s reason=%s", conversation_id, reason)
         try:
             self.repo.set_conversation_fields(user_id, conversation_id, {"reply_state": REPLY_FAILED})
             if billed and self.provider.is_billable:
-                self.repo.add_usage(user_id, conversation_id,
-                                    _usage_increments(self.provider, usage, failed=True))
+                failed = _usage_increments(self.provider, usage, failed=True)
+                self.repo.add_usage(user_id, conversation_id, failed)
+                self._track_day(failed)
         except DataError:
             pass  # best effort; the reply already failed
         return ChatError("ai_failed", MSG_AI_FAILED, 502, retryable=True,
@@ -329,13 +383,20 @@ class ConversationService:
         system, messages, philosopher, raw = self._context(user_id, conv)
         if not raw or raw[-1]["role"] != "user":
             raise ChatError("nothing_to_retry", MSG_NOTHING_TO_RETRY, 409)
+        # The first answer also carries a short title — inside the same request.
+        want_title = user_message["message_index"] == 0 and conv.get("title_source") != "user"
         try:
             reply = self.provider.reply(system=system, messages=messages, philosopher=philosopher,
-                                        max_tokens=self.settings.max_output_tokens)
+                                        max_tokens=self.settings.max_output_tokens,
+                                        want_title=want_title)
         except AIError as exc:
             raise self._fail(user_id, conversation_id, user_message, exc.reason,
                              getattr(exc, "usage", None),
                              billed=exc.reason != "missing_api_key") from None
+        updates = {"reply_state": REPLY_DONE}
+        new_title = clean_title(reply.title) if want_title else None
+        if new_title:
+            updates.update(title=new_title, title_source="ai")
         try:
             stored = self.repo.append_messages(user_id, conversation_id, [{
                 "role": "assistant",
@@ -346,7 +407,7 @@ class ConversationService:
                 "output_tokens": reply.usage.output_tokens if self.provider.is_billable else None,
                 "cache_read_input_tokens": reply.usage.cache_read_input_tokens if self.provider.is_billable else None,
                 "controller_version": conv.get("controller_version", self.settings.controller_version),
-            }], conversation_updates={"reply_state": REPLY_DONE},
+            }], conversation_updates=updates,
                 usage_increments=_usage_increments(self.provider, reply.usage),
                 expect_count=user_message["message_index"] + 1)
         except Conflict:
@@ -356,6 +417,7 @@ class ConversationService:
         except DataError as exc:
             raise self._fail(user_id, conversation_id, user_message, type(exc).__name__,
                              reply.usage, billed=True) from None
+        self._track_day(_usage_increments(self.provider, reply.usage), replies=1)
         assistant_message = stored[0]
         count = assistant_message["message_index"] + 1
         return {
@@ -364,6 +426,7 @@ class ConversationService:
             "assistant_message": public_message(assistant_message),
             "status": limit_status(count, self.settings),
             "summary_due": self.summary_due(conv, count),
+            "title": new_title,
         }
 
     # ---- context compression ---------------------------------------------------------
@@ -419,12 +482,16 @@ class ConversationService:
             usage = (_usage_increments(self.provider, getattr(exc, "usage", None), summary=True, failed=True)
                      if self.provider.is_billable else None)
             self._defer_summary(user_id, conversation_id, count + step, usage)
+            if usage:
+                self._track_day(usage)
             return False
+        self._track_day(_usage_increments(self.provider, result.usage, summary=True))
         try:
             ok = self.repo.update_summary(
                 user_id, conversation_id, expected_through_index=through, summary=result.summary,
                 through_index=new_through,
-                usage_increments=_usage_increments(self.provider, result.usage, summary=True))
+                usage_increments=_usage_increments(self.provider, result.usage, summary=True),
+                title=clean_title(result.title))
             if ok and result.user_memory is not None:
                 merged = {k: list((old_memory or {}).get(k) or []) for k in ("relationship_values", "preferences")}
                 for key, items in result.user_memory.items():
@@ -459,6 +526,18 @@ class ConversationService:
 
     def delete(self, user_id: str, conversation_id: str) -> bool:
         return self.repo.delete_conversation(user_id, conversation_id)
+
+    def rename(self, user_id: str, conversation_id: str, title) -> str:
+        """User-chosen title; automatic titles never replace it afterwards."""
+        self.get(user_id, conversation_id)
+        if not isinstance(title, str) or not " ".join(title.split()):
+            raise ChatError("title_empty", MSG_TITLE_EMPTY, 400)
+        flat = " ".join(title.split())
+        if len(flat) > USER_TITLE_MAX or any(ord(ch) < 32 for ch in flat):
+            raise ChatError("title_long", MSG_TITLE_LONG, 400)
+        self.repo.set_conversation_fields(user_id, conversation_id,
+                                          {"title": flat, "title_source": "user"})
+        return flat
 
 
 __all__ = ["ChatError", "ChatSettings", "ConversationService", "make_title", "limit_status",

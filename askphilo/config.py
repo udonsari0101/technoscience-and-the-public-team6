@@ -40,6 +40,14 @@ def _bool(env, name, default):
     return raw in ("1", "true", "yes", "on")
 
 
+def _float(env, name, default=0.0):
+    raw = _str(env, name, "")
+    try:
+        return max(0.0, float(raw)) if raw else default
+    except ValueError:
+        return default
+
+
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 
 
@@ -116,6 +124,13 @@ def load_config(env=None) -> dict:
         "CHAT_MESSAGES_PER_DAY": _int(env, "CHAT_MESSAGES_PER_DAY", 200, minimum=1),
         # Site-wide circuit breaker on reply requests (cost ceiling).
         "AI_REPLIES_PER_HOUR": _int(env, "AI_REPLIES_PER_HOUR", 600, minimum=1),
+        # Admin dashboard cost estimate: set in Render to see the remaining budget.
+        # Prices are USD per 1M tokens of the model in use (none hard-coded).
+        "ANTHROPIC_MONTHLY_BUDGET_USD": _float(env, "ANTHROPIC_MONTHLY_BUDGET_USD"),
+        "ANTHROPIC_PRICE_INPUT_PER_MTOK": _float(env, "ANTHROPIC_PRICE_INPUT_PER_MTOK"),
+        "ANTHROPIC_PRICE_OUTPUT_PER_MTOK": _float(env, "ANTHROPIC_PRICE_OUTPUT_PER_MTOK"),
+        "ANTHROPIC_PRICE_CACHE_READ_PER_MTOK": _float(env, "ANTHROPIC_PRICE_CACHE_READ_PER_MTOK"),
+        "ANTHROPIC_PRICE_CACHE_WRITE_PER_MTOK": _float(env, "ANTHROPIC_PRICE_CACHE_WRITE_PER_MTOK"),
         "MOCK_AI_DELAY_MS": _int(env, "MOCK_AI_DELAY_MS", 500),
         "ENABLE_DEV_ROUTES": _bool(env, "ENABLE_DEV_ROUTES", not is_production),
         # Flask / session hardening

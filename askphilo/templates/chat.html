@@ -33,6 +33,7 @@
         data-conversation-id="{{ conversation.id if conversation else '' }}"
         data-philosopher-id="{{ p.id }}"
         data-philosopher-name="{{ p.name }}"
+        data-philosopher-tagline="{{ p.tagline }}"
         data-oldest-index="{{ messages[0]['index'] if messages else 0 }}"
         data-max-chars="{{ max_chars }}">
     <header class="chat-header">
@@ -40,8 +41,8 @@
       <div class="chat-header-info">
         <img class="avatar avatar-sm" src="{{ url_for('static', filename=p.avatar) }}" alt="" width="36" height="36">
         <div class="chat-header-text">
-          <h1 class="chat-header-name">{{ p.name }}</h1>
-          <p class="chat-header-tagline">{{ p.tagline }}</p>
+          <h1 class="chat-header-name" data-chat-title>{{ conversation.title if conversation and conversation.title else p.name }}</h1>
+          <p class="chat-header-tagline" data-chat-subtitle>{% if conversation and conversation.title %}{{ p.name }} · {{ p.tagline }}{% else %}{{ p.tagline }}{% endif %}</p>
         </div>
       </div>
       <div class="menu-wrap">
@@ -49,9 +50,10 @@
         <div class="menu" id="chat-menu" data-menu hidden>
           <a href="{{ url_for('chat.philosopher', philosopher_id=p.id) }}" data-dialog-open="sheet-{{ p.id }}">철학자 소개</a>
           <a href="{{ url_for('chat.new') }}">새 상담 시작</a>
-          {% if conversation %}
-          <a class="danger-text" href="{{ url_for('chat.delete', conversation_id=conversation.id) }}" data-dialog-open="delete-dialog">대화 삭제</a>
-          {% endif %}
+          <a href="{{ url_for('chat.rename', conversation_id=conversation.id) if conversation else '#' }}" data-dialog-open="rename-dialog"
+             data-conversation-link="/c/{id}/rename" {% if not conversation %}hidden{% endif %}>이름 바꾸기</a>
+          <a class="danger-text" href="{{ url_for('chat.delete', conversation_id=conversation.id) if conversation else '#' }}" data-dialog-open="delete-dialog"
+             data-conversation-link="/c/{id}/delete" {% if not conversation %}hidden{% endif %}>대화 삭제</a>
         </div>
       </div>
     </header>
@@ -97,6 +99,10 @@
         <p>{{ status.notice }}</p>
         <a class="btn btn-primary btn-block" href="{{ url_for('chat.new') }}">새 상담 시작</a>
       </div>
+      {% elif daily.exhausted %}
+      <div class="composer-locked" role="status">
+        <p>오늘 질문을 모두 사용했어요.<br>내일 0시에 다시 채워져요.</p>
+      </div>
       {% else %}
       <p class="chat-notice composer-notice" data-limit-notice {% if not status.notice %}hidden{% endif %}>
         {{ status.notice or '' }} <a href="{{ url_for('chat.new') }}">새 상담 시작</a>
@@ -107,7 +113,10 @@
                   placeholder="편하게 이야기해 주세요" enterkeyhint="send" autocomplete="off"></textarea>
         <button type="submit" class="send-btn" aria-label="보내기" disabled>{{ icon('send') }}</button>
       </form>
-      <p class="composer-hint">Enter로 보내기 · Shift + Enter로 줄바꿈</p>
+      <p class="composer-meta">
+        <span class="daily-hint{% if daily.low %} is-low{% endif %}" data-daily>오늘 남은 질문 <strong data-daily-remaining>{{ daily.remaining }}</strong>개</span>
+        <span class="composer-hint">Enter로 보내기 · Shift + Enter로 줄바꿈</span>
+      </p>
       {% endif %}
     </div>
   </main>
@@ -121,17 +130,31 @@
   </div>
 </dialog>
 
-{% if conversation %}
+<dialog class="dialog" id="rename-dialog" aria-labelledby="rename-title">
+  <h2 id="rename-title">대화 이름 바꾸기</h2>
+  <form method="post" action="{{ url_for('chat.rename', conversation_id=conversation.id) if conversation else '' }}"
+        data-conversation-action="/c/{id}/rename">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="sr-only" for="rename-input">대화 이름</label>
+    <input id="rename-input" class="text-input" name="title" maxlength="30" required autocomplete="off"
+           value="{{ conversation.title if conversation and conversation.title else '' }}" data-rename-input>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-secondary" data-dialog-close>취소</button>
+      <button type="submit" class="btn btn-primary">저장</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog class="dialog" id="delete-dialog" aria-labelledby="delete-title">
   <h2 id="delete-title">이 대화를 삭제할까요?</h2>
   <p>삭제한 대화는 다시 볼 수 없어요.</p>
-  <form class="dialog-actions" method="post" action="{{ url_for('chat.delete', conversation_id=conversation.id) }}">
+  <form class="dialog-actions" method="post" action="{{ url_for('chat.delete', conversation_id=conversation.id) if conversation else '' }}"
+        data-conversation-action="/c/{id}/delete">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="button" class="btn btn-secondary" data-dialog-close>취소</button>
     <button type="submit" class="btn btn-danger">삭제</button>
   </form>
 </dialog>
-{% endif %}
 
 <template id="tpl-assistant-avatar"><img class="avatar avatar-sm" src="{{ url_for('static', filename=p.avatar) }}" alt="" width="36" height="36"></template>
 {% endblock %}

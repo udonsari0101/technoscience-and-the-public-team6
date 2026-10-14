@@ -66,6 +66,12 @@ UNCONTROLLED_LEADS = {
 CONTROLLER_MARKER = "지켜야 할 원칙:"
 
 
+def _keywords(text: str) -> set[str]:
+    """Rough content words (3+ chars) used to avoid saying the same idea twice."""
+    words = {w.strip(".,?!'\"·") for w in text.split()}
+    return {w for w in words if len(w) >= 3}
+
+
 def _has(text: str, words) -> bool:
     low = text.lower()
     return any(w in low for w in words)
@@ -77,6 +83,56 @@ def _pick(items: list[str], seed: int, salt: int = 0) -> str:
 
 def _seed(*parts: str) -> int:
     return int(hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:8], 16)
+
+
+# One sentence per reply that names a signature idea in everyday words, so the
+# mock answers (like the real prompt) make it obvious which philosopher speaks.
+SIGNATURES = {
+    "plato": [
+        "사랑을 '좋은 것을 늘 곁에 두고 싶은 마음'으로 본다면, 지금 네 마음이 붙잡고 싶은 좋은 게 무엇인지가 핵심일 수 있어.",
+        "눈에 보이는 행동은 그림자 같은 거라서, 그 뒤에서 네가 진짜 바라는 걸 찾아야 고민이 풀릴 때가 많아.",
+        "끌림은 겉모습에서 시작해도 그 사람의 됨됨이, 함께 바라보는 가치로 깊어질 수 있으니 지금 네 마음이 어디쯤 머무는지 보면 좋겠어.",
+        "내가 답을 정해 주기보다, 질문을 따라가다 보면 네가 이미 품고 있던 답을 스스로 꺼내게 될 거야.",
+    ],
+    "aristotle": [
+        "사람은 반복하는 행동대로 만들어진다고 나는 봐서, 한 번의 말보다 쌓여 온 습관이 이 관계를 더 정확히 보여줄 거야.",
+        "지나치게 참는 것과 지나치게 몰아붙이는 것 사이 어딘가에 너에게 맞는 중용이 있어.",
+        "관계는 이익 때문에, 즐거움 때문에, 서로의 사람됨을 아껴서 이어지는데 오래가는 건 대개 마지막 경우야.",
+        "좋은 연인은 서로가 잘되길 바라는 또 하나의 나 같은 존재라서, 이 사람 곁에서 네가 더 너다워지는지도 볼 만해.",
+    ],
+    "epicurus": [
+        "바람에는 꼭 필요한 것, 자연스럽지만 없어도 되는 것, 불안이 부풀린 것이 섞여 있어서 셋을 나눠 보면 마음이 가벼워져.",
+        "내가 말하는 즐거움은 들뜬 쾌락이 아니라 마음이 흔들리지 않는 평온, 아타락시아에 가까워.",
+        "지금 불안을 덜어 주는 선택과 며칠 뒤에도 편안한 선택은 다를 수 있으니 둘을 나란히 놓고 따져 보자.",
+        "삶을 기쁘게 하는 것 가운데 믿을 수 있는 우정만 한 게 없다고 나는 생각해서, 이 관계가 그런 안심을 주는지도 궁금해.",
+    ],
+    "nietzsche": [
+        "참고 넘기는 게 착함처럼 보여도 속에서 원망, 르상티망으로 쌓이고 있다면 그건 너를 지키는 방식이 아닐 수 있어.",
+        "남이 정해 준 좋은 연애의 기준보다 네가 스스로 세운 기준으로 살 때 비로소 너 자신이 되어 가는 거야.",
+        "지금의 이 관계를 똑같이 끝없이 되풀이해야 한다면 기꺼이 그러겠다고 말할 수 있을지 한번 떠올려 봐.",
+        "사랑은 결국 긴 대화 같은 거라서, 나이 들어서도 이 사람과 계속 이야기 나누고 싶은지가 중요한 물음이야.",
+    ],
+}
+
+TOPIC_TITLES = {
+    "contact": "연락 문제로 서운함",
+    "breakup": "헤어질지 고민",
+    "confession": "고백할지 고민",
+    "conflict": "반복되는 다툼",
+    "jealousy": "질투와 불안",
+    "self": "연애 속 자존감",
+}
+
+
+def mock_title(first_message: str) -> str:
+    """Topic-based short title (mock mode stands in for the model's title)."""
+    topic = detect_topic(first_message)
+    if topic:
+        return TOPIC_TITLES[topic]
+    flat = " ".join(first_message.split())
+    for stop in (".", "?", "!", ",", "…"):
+        flat = flat.split(stop)[0]
+    return flat if len(flat) <= 14 else flat[:13].rstrip() + "…"
 
 
 def detect_topic(text: str) -> str | None:
@@ -99,7 +155,7 @@ class MockProvider(AIProvider):
             jitter = (seed % 400) - 200  # 300–700 ms around the default 500 ms
             time.sleep(max(0, self.delay_ms + jitter) / 1000)
 
-    def reply(self, *, system, messages, philosopher, max_tokens):
+    def reply(self, *, system, messages, philosopher, max_tokens, want_title=False):
         user_turns = [m["content"] for m in messages if m["role"] == "user"
                       and not str(m["content"]).startswith("[상담 참고 정보")]
         last = user_turns[-1] if user_turns else ""
@@ -139,9 +195,17 @@ class MockProvider(AIProvider):
             else:
                 fresh_empathy = [e for e in mock["empathy"] if e not in recent] or mock["empathy"]
                 lead = _pick(fresh_empathy, seed)
-            text = f"{lead} {reframe} {question}"
+            signatures = SIGNATURES.get(philosopher["id"], [])
+            fresh_signatures = [s for s in signatures if s not in recent] or signatures
+            signature = _pick(fresh_signatures, seed, 3) if signatures else ""
+            if signature and _keywords(signature) & _keywords(question):
+                # Don't ask about the very idea the signature sentence just raised.
+                distinct = [q for q in fresh_questions if not (_keywords(signature) & _keywords(q))]
+                question = _pick(distinct, seed, 2) if distinct else question
+            text = " ".join(part for part in (lead, reframe, signature, question) if part)
         return AIReply(text=text, provider=self.name, model=self.model,
-                       usage=AIUsage(), stop_reason="end_turn")
+                       usage=AIUsage(), stop_reason="end_turn",
+                       title=mock_title(user_turns[0]) if want_title and user_turns else None)
 
     def summarize(self, *, system, prompt, philosopher, old_summary, old_memory,
                   transcript, max_tokens):

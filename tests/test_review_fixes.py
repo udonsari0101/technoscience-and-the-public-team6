@@ -16,7 +16,7 @@ from askphilo.services import accounts
 from askphilo.services.conversations import ChatSettings, ConversationService
 
 from .conftest import api_headers, csrf_from, login, signup
-from .helpers import CountingProvider, FailingProvider
+from .helpers import CountingProvider, FailingProvider, repo_with_user
 
 USER = "user-1"
 
@@ -110,7 +110,7 @@ def test_invalid_conversation_ids_are_404(logged_in, cid):
 
 # ---------------------------------------------------------------- reply races
 def test_concurrent_send_in_same_conversation_is_refused():
-    repo = MemoryRepository()
+    repo = repo_with_user(USER)
     gate, entered = threading.Event(), threading.Event()
 
     class Slow(CountingProvider):
@@ -160,7 +160,7 @@ def test_retry_refused_while_reply_may_still_be_running(app, logged_in, repo):
 
 
 def test_reply_is_dropped_if_order_changed():
-    repo = MemoryRepository()
+    repo = repo_with_user(USER)
 
     class Interleaving(CountingProvider):
         def reply(self, **kw):
@@ -234,7 +234,7 @@ def test_validation_errors_do_not_consume_budget(app, logged_in):
 
 # ---------------------------------------------------------------- summary / controller
 def test_summary_save_failure_defers_instead_of_rebuying():
-    repo = MemoryRepository()
+    repo = repo_with_user(USER)
     provider = CountingProvider()
     settings = ChatSettings()
     svc = ConversationService(repo, provider, settings)
@@ -254,7 +254,7 @@ def test_summary_save_failure_defers_instead_of_rebuying():
 
 
 def test_production_forces_controller_even_for_old_conversations():
-    repo = MemoryRepository()
+    repo = repo_with_user(USER)
     dev = ConversationService(repo, CountingProvider(), ChatSettings(controller_enabled=False))
     cid = dev.create_conversation(USER, "plato")["id"]
     dev.send(USER, cid, "질문")

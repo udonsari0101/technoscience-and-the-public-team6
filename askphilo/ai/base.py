@@ -28,6 +28,7 @@ class AIReply:
     model: str
     usage: AIUsage = field(default_factory=AIUsage)
     stop_reason: str | None = None
+    title: str | None = None  # short conversation title, only when requested
 
 
 @dataclass
@@ -38,6 +39,7 @@ class SummaryResult:
     # None means "leave the stored user memory untouched".
     user_memory: dict | None = None
     usage: AIUsage = field(default_factory=AIUsage)
+    title: str | None = None
 
 
 class AIProvider:
@@ -45,7 +47,7 @@ class AIProvider:
     is_billable = False  # True when calls cost money (counted as api_calls)
 
     def reply(self, *, system: str, messages: list[dict], philosopher: dict,
-              max_tokens: int) -> AIReply:
+              max_tokens: int, want_title: bool = False) -> AIReply:
         raise NotImplementedError
 
     def summarize(self, *, system: str, prompt: str, philosopher: dict,

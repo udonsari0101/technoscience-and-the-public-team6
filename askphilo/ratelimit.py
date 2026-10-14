@@ -46,6 +46,11 @@ class RateLimiter:
         with self._lock:
             return self._count(key, window, self._clock()) < limit
 
+    def count(self, key: str, window: float) -> int:
+        """Hits recorded for `key` within `window` (read-only)."""
+        with self._lock:
+            return self._count(key, window, self._clock())
+
     def hit(self, key: str, limit: int, window: float) -> bool:
         """Record a hit; returns False (and records nothing) when over limit."""
         with self._lock:

@@ -67,6 +67,9 @@ def create_app(overrides: dict | None = None) -> Flask:
     app.register_blueprint(auth_bp)
     app.register_blueprint(pages_bp)
     app.register_blueprint(chat_bp)
+    from .views.admin import bp as admin_bp
+
+    app.register_blueprint(admin_bp)
     if app.config["ENABLE_DEV_ROUTES"]:
         from .views.dev import bp as dev_bp
 

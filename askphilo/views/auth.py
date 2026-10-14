@@ -84,6 +84,8 @@ def login():
         get_repository().record_login(user["id"])
         login_user(user)
         log.info("login ok user=%s", user["id"])
+        if user.get("role") == "admin" and not next_url:
+            return redirect(url_for("admin.dashboard"))
         return redirect(next_url or url_for("pages.home"))
     return render_template("auth/login.html", username=username, error=error, next=next_url)
 

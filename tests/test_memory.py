@@ -8,7 +8,7 @@ from askphilo.ai import set_provider
 from askphilo.data.memory_repo import MemoryRepository
 from askphilo.services.conversations import ChatSettings, ConversationService
 
-from .helpers import BillableCountingProvider, CountingProvider, FailingProvider
+from .helpers import BillableCountingProvider, CountingProvider, FailingProvider, repo_with_user
 
 USER = "user-1"
 
@@ -20,7 +20,7 @@ def settings():
 
 @pytest.fixture()
 def repo():
-    return MemoryRepository()
+    return repo_with_user(USER)
 
 
 def make(repo, provider, settings):

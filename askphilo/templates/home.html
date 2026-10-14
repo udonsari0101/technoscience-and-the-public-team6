@@ -4,7 +4,10 @@
 {% block body %}
 <header class="topbar">
   {{ brand() }}
-  <a class="icon-btn" href="{{ url_for('pages.settings') }}" aria-label="설정">{{ icon('settings') }}</a>
+  <span class="topbar-actions">
+    {% if current_user.role == 'admin' %}<a class="btn btn-secondary btn-sm" href="{{ url_for('admin.dashboard') }}">관리</a>{% endif %}
+    <a class="icon-btn" href="{{ url_for('pages.settings') }}" aria-label="설정">{{ icon('settings') }}</a>
+  </span>
 </header>
 <main id="main" class="page page-enter">
   <section class="greeting" aria-labelledby="greeting-title">
@@ -20,6 +23,16 @@
     </span>
     <span class="cta-chevron">{{ icon('chevron') }}</span>
   </a>
+
+  <section class="daily-card{% if daily.low %} is-low{% endif %}{% if daily.exhausted %} is-empty{% endif %}" aria-labelledby="daily-title">
+    <div class="daily-row">
+      <h2 id="daily-title" class="daily-title">오늘 남은 질문</h2>
+      <p class="daily-count"><strong>{{ daily.remaining }}</strong> / {{ daily.limit }}</p>
+    </div>
+    <progress class="daily-meter" value="{{ daily.remaining }}" max="{{ daily.limit }}"
+              aria-label="오늘 남은 질문 {{ daily.remaining }}개, 하루 {{ daily.limit }}개">{{ daily.remaining }}</progress>
+    <p class="daily-note">{% if daily.exhausted %}오늘 질문을 모두 사용했어요. 내일 0시에 다시 채워져요.{% else %}매일 0시에 다시 채워져요.{% endif %}</p>
+  </section>
 
   <section class="section" aria-labelledby="recent-title">
     <div class="section-head">

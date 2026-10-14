@@ -74,7 +74,8 @@ class Repository:
 
     # ---- users ---------------------------------------------------------
     def create_user(self, *, user_id: str, name: str, username: str,
-                    username_normalized: str, password_hash: str) -> dict:
+                    username_normalized: str, password_hash: str,
+                    role: str | None = None) -> dict:
         """Atomically reserve the username and create the user.
 
         Raises UsernameTaken if username_index already holds the name.
@@ -88,6 +89,22 @@ class Repository:
         raise NotImplementedError
 
     def record_login(self, user_id: str) -> None:
+        raise NotImplementedError
+
+    def set_user_fields(self, user_id: str, fields: dict) -> None:
+        raise NotImplementedError
+
+    def list_users(self, limit: int = 500) -> list[dict]:
+        """Users for the admin dashboard — never includes password data."""
+        raise NotImplementedError
+
+    # ---- service-wide daily usage (admin dashboard) ----------------------
+    def record_usage_day(self, day: str, increments: dict) -> None:
+        """Add counters to usage_daily/{day} (KST date)."""
+        raise NotImplementedError
+
+    def list_usage_days(self, limit: int = 31) -> list[dict]:
+        """Most recent days first: [{"day": "2026-10-14", **counters}]."""
         raise NotImplementedError
 
     # ---- conversations ---------------------------------------------------
@@ -114,8 +131,9 @@ class Repository:
         """Transactionally assign message_index values and store messages.
 
         Updates message_count, updated_at, last_message_* on the
-        conversation, sets `title` if it is still empty, applies
-        `conversation_updates` and adds `usage_increments` to usage.*.
+        conversation, applies `conversation_updates` (except that a title the
+        user chose — title_source "user" — is never replaced automatically)
+        and adds `usage_increments` to usage.*.
         With `expect_count`, raises Conflict unless message_count equals it
         (keeps a reply directly after the message it answers).
         Returns the stored messages (with message_index).
@@ -134,8 +152,12 @@ class Repository:
     # ---- context summary -------------------------------------------------
     def update_summary(self, user_id: str, conversation_id: str, *,
                        expected_through_index: int, summary: str,
-                       through_index: int, usage_increments: dict | None = None) -> bool:
+                       through_index: int, usage_increments: dict | None = None,
+                       title: str | None = None) -> bool:
         """Store a new context summary only if nobody else advanced it.
+
+        `title` (optional) refreshes an automatic title in the same write; a
+        user-chosen title is kept.
 
         Returns False (without writing) when the stored
         summarized_through_message_index differs from expected.
@@ -147,6 +169,19 @@ class Repository:
 
     def set_conversation_fields(self, user_id: str, conversation_id: str, fields: dict) -> None:
         """Plain field update (no-op if the conversation no longer exists)."""
+        raise NotImplementedError
+
+    # ---- daily question allowance ---------------------------------------
+    def reserve_daily_message(self, user_id: str, day: str, limit: int) -> int | None:
+        """Atomically use one question of `day`. Returns the new count, or
+        None (and changes nothing) when `limit` is already reached."""
+        raise NotImplementedError
+
+    def refund_daily_message(self, user_id: str, day: str) -> None:
+        """Give back one reserved question (no-op on another day)."""
+        raise NotImplementedError
+
+    def get_daily_usage(self, user_id: str, day: str) -> int:
         raise NotImplementedError
 
     # ---- user long-term memory -----------------------------------------
@@ -163,6 +198,12 @@ class Repository:
     def iter_conversation_usage(self, limit: int = 500) -> list[dict]:
         """Conversation metadata + usage counters across all users (no content)."""
         raise NotImplementedError
+
+
+def keeps_user_title(conv: dict, key: str, updates: dict) -> bool:
+    """True if `key` must be skipped: never auto-replace a title the user chose."""
+    return (key in ("title", "title_source") and conv.get("title_source") == "user"
+            and updates.get("title_source") != "user")
 
 
 class UnavailableRepository(Repository):

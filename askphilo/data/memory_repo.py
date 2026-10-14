@@ -17,10 +17,15 @@ from .base import (
     NotFound,
     Repository,
     UsernameTaken,
+    keeps_user_title,
     message_doc_id,
     preview,
     utcnow,
 )
+
+
+# Fields the admin dashboard may read (no password data).
+USER_PUBLIC = ('name', 'username', 'username_normalized', 'role', 'created_at', 'updated_at', 'last_login_at', 'daily_usage', 'schema_version')
 
 
 class MemoryRepository(Repository):
@@ -33,9 +38,10 @@ class MemoryRepository(Repository):
         self.conversations: dict[str, dict[str, dict]] = {}
         self.messages: dict[tuple[str, str], dict[str, dict]] = {}
         self.memory: dict[str, dict] = {}
+        self.usage_days: dict[str, dict] = {}
 
     # ---- users -----------------------------------------------------------
-    def create_user(self, *, user_id, name, username, username_normalized, password_hash):
+    def create_user(self, *, user_id, name, username, username_normalized, password_hash, role=None):
         with self._lock:
             if username_normalized in self.username_index:
                 raise UsernameTaken(username_normalized)
@@ -46,6 +52,7 @@ class MemoryRepository(Repository):
                 "username": username,
                 "username_normalized": username_normalized,
                 "password_hash": password_hash,
+                "role": role,
                 "schema_version": SCHEMA_VERSION,
                 "created_at": now,
                 "updated_at": now,
@@ -70,6 +77,30 @@ class MemoryRepository(Repository):
                 now = utcnow()
                 self.users[user_id]["last_login_at"] = now
                 self.users[user_id]["updated_at"] = now
+
+    def set_user_fields(self, user_id, fields):
+        with self._lock:
+            if user_id in self.users:
+                self.users[user_id].update(copy.deepcopy(fields))
+
+    def list_users(self, limit=500):
+        with self._lock:
+            rows = [{"id": uid, **{k: copy.deepcopy(u.get(k)) for k in USER_PUBLIC}}
+                    for uid, u in self.users.items()]
+        rows.sort(key=lambda r: r["created_at"], reverse=True)
+        return rows[:limit]
+
+    def record_usage_day(self, day, increments):
+        with self._lock:
+            row = self.usage_days.setdefault(day, {})
+            for key, value in (increments or {}).items():
+                if value:
+                    row[key] = row.get(key, 0) + value
+
+    def list_usage_days(self, limit=31):
+        with self._lock:
+            days = sorted(self.usage_days, reverse=True)[:limit]
+            return [{"day": d, **copy.deepcopy(self.usage_days[d])} for d in days]
 
     # ---- conversations -------------------------------------------------
     def create_conversation(self, user_id, conversation_id, data):
@@ -129,9 +160,10 @@ class MemoryRepository(Repository):
             conv["updated_at"] = now
             conv["last_message_preview"] = preview(last["content"])
             conv["last_message_role"] = last["role"]
-            for key, value in (conversation_updates or {}).items():
-                if key == "title" and conv.get("title"):
-                    continue  # the title is fixed by the first user message
+            updates = conversation_updates or {}
+            for key, value in updates.items():
+                if keeps_user_title(conv, key, updates):
+                    continue
                 conv[key] = value
             self._add_usage(conv, usage_increments)
             return stored
@@ -152,7 +184,7 @@ class MemoryRepository(Repository):
 
     # ---- summary ---------------------------------------------------------
     def update_summary(self, user_id, conversation_id, *, expected_through_index,
-                       summary, through_index, usage_increments=None):
+                       summary, through_index, usage_increments=None, title=None):
         with self._lock:
             conv = self.conversations.get(user_id, {}).get(conversation_id)
             if conv is None:
@@ -164,6 +196,8 @@ class MemoryRepository(Repository):
             conv["summarized_through_message_index"] = through_index
             conv["summary_version"] = conv.get("summary_version", 0) + 1
             conv["context_summary_updated_at"] = utcnow()
+            if title and conv.get("title_source") != "user":
+                conv["title"], conv["title_source"] = title, "ai"
             self._add_usage(conv, usage_increments)
             return True
 
@@ -187,6 +221,31 @@ class MemoryRepository(Repository):
         for key, value in increments.items():
             if value:
                 usage[key] = usage.get(key, 0) + value
+
+    # ---- daily question allowance ------------------------------------------
+    def reserve_daily_message(self, user_id, day, limit):
+        with self._lock:
+            user = self.users.get(user_id)
+            if user is None:
+                return None
+            usage = user.get("daily_usage") or {}
+            count = usage.get("count", 0) if usage.get("date") == day else 0
+            if count >= limit:
+                return None
+            user["daily_usage"] = {"date": day, "count": count + 1}
+            return count + 1
+
+    def refund_daily_message(self, user_id, day):
+        with self._lock:
+            user = self.users.get(user_id)
+            usage = (user or {}).get("daily_usage") or {}
+            if usage.get("date") == day and usage.get("count", 0) > 0:
+                user["daily_usage"] = {"date": day, "count": usage["count"] - 1}
+
+    def get_daily_usage(self, user_id, day):
+        with self._lock:
+            usage = (self.users.get(user_id) or {}).get("daily_usage") or {}
+            return usage.get("count", 0) if usage.get("date") == day else 0
 
     # ---- user memory -----------------------------------------------------
     def get_user_memory(self, user_id):

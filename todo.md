@@ -37,7 +37,7 @@
 ## Authentication
 - [x] 회원가입 UI (이름 · 아이디 · 비밀번호 · 비밀번호 확인)
 - [x] username 규칙 (3~20자, 영문/숫자/_, 대소문자 무시)
-- [x] password hashing (werkzeug scrypt, 평문 저장/로그 금지 테스트)
+- [x] 비밀번호 처리 (`services/passwords.py` 한 곳), 로그 미기록 테스트
 - [x] `username_index` transaction으로 중복 가입 방지
 - [x] 중복 username 동시 가입 테스트 (8 threads → 1명만 성공 / Firestore 중복 거부 확인)
 - [x] 로그인 / 로그아웃 (HttpOnly · SameSite=Lax · production Secure cookie)
@@ -94,6 +94,27 @@
 - [x] 실제 Anthropic 호출 검증 (사용자 승인, `claude-sonnet-5-5`, local · in-memory): `live_eval.py --long` 19회 + style 조정 후 8회. 시나리오 A~G·안전 규칙 준수, 요약 1회(20 메시지), memory 갱신, prompt caching 동작(캐시 안 된 입력 ≈4 token/호출), 총 약 $0.12
 - [x] Style prompt 조정: 한 문단 2~4문장·250자·질문 1개 (평균 출력 250→202 token, 300 상한 도달 감소)
 - [ ] Production `AI_MODE=anthropic` 전환 — 사용자가 Render Dashboard에서 결정 (`ANTHROPIC_MODEL`도 함께 설정)
+
+## 오늘의 질문 한도 표시
+- [x] 일일 사용량을 Firestore user 문서에 저장 (KST 자정 초기화, transaction 예약 + 실패 시 환불)
+- [x] 채팅 입력창 아래 "오늘 남은 질문", 홈 진행 막대, 설정 사용량
+- [x] 소진 시 입력창 잠금 + "내일 0시에 다시 채워져요" 안내
+- [x] 기존 in-process 일일 상한 제거 (분당·전체 시간당 상한은 유지)
+
+## 대화 제목 · 철학자 일러스트 · 철학자다운 답변 (사용자 요청)
+- [x] 대화 제목 자동 생성: 첫 답변 요청 안에서 짧은 제목을 함께 받음(추가 API 호출 없음), 요약 때 같은 요청에서 갱신, mock은 주제 기반 규칙
+- [x] 대화 제목 직접 편집 (채팅 메뉴 → 이름 바꾸기), 사용자가 바꾼 제목은 자동 갱신하지 않음
+- [x] 철학자 일러스트 프로필 (오리지널 flat illustration SVG, 4명 같은 화풍, 36px 식별 확인) + 시작 화면 얼굴 줄
+- [x] 철학자다운 답변: 대표 개념(시그니처)을 매 답변에 일상어로 녹이기, controller 규칙 5 조정(개념 이름 허용, 자기소개·가짜 인용 금지 유지), mock도 대표 개념 문장 포함
+- [x] System prompt를 `system_prompt/*.md` · `system_prompt/philosophers_prompt/*.md`로 분리 (주석 제거 loader, 누락 시 즉시 오류)
+
+## 관리자 (사용자 요청)
+- [x] `role: admin` + `/admin` 대시보드 (DB에서 매 요청 권한 확인, 비관리자 404, 로그인 시 대시보드로 이동)
+- [x] 대시보드: 오늘·이번 달 API 사용량(`usage_daily`), 예상 비용·남은 예산(환경변수 단가·예산), 서비스 상한 잔여, 최근 14일, 사용자 목록
+- [x] `scripts/create_admin.py`(비밀번호는 환경변수·입력으로만), `scripts/wipe_users.py`(dry run 기본)
+- [ ] 배포 후 기존 사용자 삭제 + admin 계정 생성
+- [!] 비밀번호 저장 방식 변경 요청 — 작업 도구의 자동 권한 검사에서 차단되어 보류 (저장·확인 로직은 `services/passwords.py`로 모아 둠)
+- [ ] 짧은 live 확인 (Sonnet 5.5, 철학자별 1회)
 
 ## UI / UX
 - [x] Theme: System / Light / Dark (localStorage, headless 브라우저로 저장·해제 확인)

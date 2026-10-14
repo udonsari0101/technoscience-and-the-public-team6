@@ -6,9 +6,8 @@ import re
 import unicodedata
 import uuid
 
-from werkzeug.security import check_password_hash, generate_password_hash
-
 from ..data import Repository, UsernameTaken
+from .passwords import store_password, verify_password
 
 USERNAME_RE = re.compile(r"^[A-Za-z0-9_]{3,20}$")
 NAME_MAX = 30
@@ -17,7 +16,7 @@ PASSWORD_MAX = 128
 
 # Used to spend the same hashing time when the username does not exist,
 # so response timing does not reveal which usernames are registered.
-_DUMMY_HASH = generate_password_hash("askphilo-timing-equaliser")
+_DUMMY_HASH = store_password("askphilo-timing-equaliser")
 
 MSG = {
     "name_required": "이름을 입력해 주세요.",
@@ -89,7 +88,7 @@ def signup(repo: Repository, *, name: str, username: str, password: str, passwor
             name=clean_name(name),
             username=username,
             username_normalized=normalize_username(username),
-            password_hash=generate_password_hash(password),
+            password_hash=store_password(password),
         )
     except UsernameTaken:
         raise SignupError({"username": MSG["username_taken"]}) from None
@@ -99,12 +98,12 @@ def authenticate(repo: Repository, *, username: str, password: str) -> dict | No
     normalized = normalize_username(username)
     password = password or ""
     if not is_valid_username(normalized) or not password or len(password) > PASSWORD_MAX:
-        check_password_hash(_DUMMY_HASH, password[:PASSWORD_MAX])
+        verify_password(_DUMMY_HASH, password[:PASSWORD_MAX])
         return None
     user = repo.get_user_by_username(normalized)
     if user is None:
-        check_password_hash(_DUMMY_HASH, password)
+        verify_password(_DUMMY_HASH, password)
         return None
-    if not check_password_hash(user.get("password_hash", ""), password):
+    if not verify_password(user.get("password_hash", ""), password):
         return None
     return user

@@ -12,11 +12,14 @@
   var input = document.getElementById("composer-input");
   var sendBtn = form ? form.querySelector(".send-btn") : null;
   var limitNotice = document.querySelector("[data-limit-notice]");
+  var dailyHint = document.querySelector("[data-daily]");
+  var dailyRemaining = document.querySelector("[data-daily-remaining]");
   var avatarTpl = document.getElementById("tpl-assistant-avatar");
   var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || "";
   var conversationId = root.getAttribute("data-conversation-id") || "";
   var philosopherId = root.getAttribute("data-philosopher-id");
   var philosopherName = root.getAttribute("data-philosopher-name") || "상담";
+  var philosopherTagline = root.getAttribute("data-philosopher-tagline") || "";
   var oldestIndex = parseInt(root.getAttribute("data-oldest-index") || "0", 10);
   var busy = false;
   var desktopEnter = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
@@ -24,6 +27,7 @@
   var MSG_FAILED = "답변을 가져오지 못했어요. 잠시 후 다시 시도해 주세요.";
   var MSG_NETWORK = "잠시 연결이 불안정해요. 다시 시도해 주세요.";
   var MSG_PENDING = "답변을 준비하고 있어요. 잠시 후 새로고침해 주세요.";
+  var MSG_DAILY_DONE = "오늘 질문을 모두 사용했어요. 내일 0시에 다시 채워져요.";
   // Errors raised before the user's message was stored: safe to put it back in the composer.
   var PRE_SAVE = {
     empty: 1, too_long: 1, too_large: 1, csrf: 1, rate_limited: 1, daily_limit: 1, busy: 1,
@@ -124,10 +128,46 @@
       limitNotice.hidden = false;
     }
   }
+  // Today's question allowance shown under the composer
+  function applyDaily(daily) {
+    if (!daily) return;
+    if (dailyRemaining) dailyRemaining.textContent = String(daily.remaining);
+    if (dailyHint) dailyHint.classList.toggle("is-low", !!daily.low);
+    if (daily.exhausted) lockComposer();
+  }
+  function lockComposer() {
+    var composer = document.querySelector(".composer");
+    if (!composer || composer.querySelector(".composer-locked")) return;
+    var box = el("div", "composer-locked");
+    box.setAttribute("role", "status");
+    box.appendChild(el("p", null, MSG_DAILY_DONE));
+    composer.replaceChildren(box);
+    form = null;
+    input = null;
+    sendBtn = null;
+  }
+  function applyTitle(title) {
+    if (!title) return;
+    var h1 = document.querySelector("[data-chat-title]");
+    var sub = document.querySelector("[data-chat-subtitle]");
+    var renameInput = document.querySelector("[data-rename-input]");
+    if (h1) h1.textContent = title;
+    if (sub) sub.textContent = philosopherName + " · " + philosopherTagline;
+    if (renameInput) renameInput.value = title;
+    document.title = title + " · AskPhilo";
+  }
   function adoptConversation(id) {
     if (!id || conversationId) return;
     conversationId = id;
     root.setAttribute("data-conversation-id", id);
+    // Rename / delete become available once the conversation exists.
+    document.querySelectorAll("[data-conversation-link]").forEach(function (a) {
+      a.href = a.getAttribute("data-conversation-link").replace("{id}", encodeURIComponent(id));
+      a.hidden = false;
+    });
+    document.querySelectorAll("[data-conversation-action]").forEach(function (f) {
+      f.action = f.getAttribute("data-conversation-action").replace("{id}", encodeURIComponent(id));
+    });
     if (window.history && history.replaceState) {
       history.replaceState(null, "", "/c/" + encodeURIComponent(id));
     }
@@ -155,6 +195,8 @@
       if (userRow && data.user_message) userRow.setAttribute("data-index", data.user_message.index);
       thread.appendChild(messageNode("assistant", data.assistant_message.content, data.assistant_message.index));
       applyStatus(data.status);
+      applyDaily(data.daily);
+      applyTitle(data.title);
     } else if (result.status === 401) {
       window.location.href = "/login?next=" + encodeURIComponent(window.location.pathname);
       return;
@@ -173,6 +215,9 @@
       }
       if (data.error === "in_progress") {
         thread.appendChild(pendingNode());
+      } else if (data.error === "daily_limit") {
+        thread.appendChild(errorNode(data.message || MSG_DAILY_DONE, false));
+        applyDaily(data.daily);
       } else if (data.error) {
         thread.appendChild(errorNode(data.message || MSG_FAILED, data.retryable === true));
       } else {

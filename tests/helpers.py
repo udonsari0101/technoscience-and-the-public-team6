@@ -2,6 +2,15 @@
 
 from askphilo.ai.base import AIError, AIProvider, AIUsage
 from askphilo.ai.mock import MockProvider
+from askphilo.data.memory_repo import MemoryRepository
+
+
+def repo_with_user(user_id: str = "user-1") -> MemoryRepository:
+    """In-memory repository that already holds `user_id` (needed for quotas)."""
+    repo = MemoryRepository()
+    repo.create_user(user_id=user_id, name="테스트", username=f"u_{user_id[-6:]}".replace("-", "_"),
+                     username_normalized=f"u_{user_id[-6:]}".replace("-", "_"), password_hash="x")
+    return repo
 
 
 class CountingProvider(AIProvider):

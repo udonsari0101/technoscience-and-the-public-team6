@@ -6,6 +6,11 @@
   <section class="hero" aria-labelledby="hero-title">
     <img class="hero-logo" src="{{ url_for('static', filename='img/logo.svg') }}" alt="" width="72" height="72">
     <h1 id="hero-title">철학자와 함께<br>내 마음을 들여다봐요</h1>
+    <ul class="hero-faces" aria-label="함께 이야기할 철학자">
+      {% for pid, name in [('plato', '플라톤'), ('aristotle', '아리스토텔레스'), ('epicurus', '에피쿠로스'), ('nietzsche', '니체')] %}
+      <li><img class="avatar avatar-md" src="{{ url_for('static', filename='img/philosophers/' ~ pid ~ '.svg') }}" alt="{{ name }}" width="44" height="44"></li>
+      {% endfor %}
+    </ul>
     <p>원하는 철학자를 고르고, 연애 고민을 편하게 이야기해 보세요.<br>정답 대신 나에게 맞는 기준을 함께 찾아요.</p>
   </section>
   <div class="hero-actions">

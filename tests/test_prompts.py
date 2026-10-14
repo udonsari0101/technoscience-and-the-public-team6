@@ -27,7 +27,8 @@ def test_every_philosopher_prompt_is_distinct_and_compact(p):
     system = prompts.build_system_prompt(p)
     others = [o["prompt"] for o in PHILOSOPHERS if o["id"] != p["id"]]
     assert all(o not in system for o in others)
-    assert 300 <= len(p["prompt"]) <= 700
+    assert 300 <= len(p["prompt"]) <= 1200
+    assert "대표 개념" in p["prompt"] and f"너는 {p['name']}" in p["prompt"]
 
 
 def test_context_block_is_a_user_turn_not_system():
@@ -142,6 +143,40 @@ def test_mock_controller_off_shows_failure_modes_for_comparison():
 
 
 def test_controller_rule_wording():
-    assert "'(철학자 이름)라면'" in prompts.CONTROLLER_V1
+    assert "'나는 플라톤으로서'" in prompts.CONTROLLER_V1
+    assert "개념 이름은 한 답변에 하나만" in prompts.CONTROLLER_V1
     assert "~하노라" in prompts.STYLE
     assert "일회성 욕설" in prompts.SUMMARY_SYSTEM
+
+
+def test_prompts_come_from_markdown_files():
+    from askphilo.ai import prompt_files
+
+    assert prompt_files.PROMPT_DIR.name == "system_prompt"
+    for name in ("base.md", "controller_v1.md", "style.md", "summary.md", "title.md"):
+        text = prompt_files.load(name)
+        assert text and "<!--" not in text  # editor notes are stripped
+    for p in PHILOSOPHERS:
+        assert prompt_files.philosopher(p["id"]) == p["prompt"]
+    assert prompt_files.controller("v9") == prompt_files.load("controller_v1.md")  # unknown → v1
+    system = prompts.build_system_prompt(get_philosopher("epicurus"))
+    assert system.startswith(prompts.BASE) and system.endswith(prompts.STYLE)
+    assert "<!--" not in system and "README" not in system
+
+
+def test_missing_prompt_file_fails_loudly():
+    from askphilo.ai import prompt_files
+
+    try:
+        prompt_files.load("philosophers_prompt/socrates.md")
+        raise AssertionError("expected PromptFileError")
+    except prompt_files.PromptFileError as exc:
+        assert "socrates.md" in str(exc)
+
+
+@pytest.mark.parametrize("pid", [p["id"] for p in PHILOSOPHERS])
+def test_mock_reply_carries_a_signature_idea(pid):
+    from askphilo.ai.mock import SIGNATURES
+
+    text = mock_reply(pid, "요즘 마음이 복잡해")
+    assert any(s in text for s in SIGNATURES[pid])

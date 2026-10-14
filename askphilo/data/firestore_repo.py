@@ -20,6 +20,7 @@ from .base import (
     NotFound,
     Repository,
     UsernameTaken,
+    keeps_user_title,
     message_doc_id,
     preview,
     utcnow,
@@ -28,6 +29,8 @@ from .base import (
 log = logging.getLogger("askphilo.firestore")
 
 FIREBASE_APP_NAME = "askphilo"
+# Fields the admin dashboard may read (no password data).
+USER_PUBLIC = ['name', 'username', 'username_normalized', 'role', 'created_at', 'updated_at', 'last_login_at', 'daily_usage', 'schema_version']
 
 
 def _guard(fn):
@@ -90,7 +93,7 @@ class FirestoreRepository(Repository):
 
     # ---- users -------------------------------------------------------------------
     @_guard
-    def create_user(self, *, user_id, name, username, username_normalized, password_hash):
+    def create_user(self, *, user_id, name, username, username_normalized, password_hash, role=None):
         from google.cloud import firestore as gcf
 
         client = self.client
@@ -102,6 +105,7 @@ class FirestoreRepository(Repository):
             "username": username,
             "username_normalized": username_normalized,
             "password_hash": password_hash,
+            "role": role,
             "schema_version": SCHEMA_VERSION,
             "created_at": now,
             "updated_at": now,
@@ -142,6 +146,37 @@ class FirestoreRepository(Repository):
     def record_login(self, user_id):
         now = utcnow()
         self._user_ref(user_id).update({"last_login_at": now, "updated_at": now})
+
+    @_guard
+    def set_user_fields(self, user_id, fields):
+        self._user_ref(user_id).update(dict(fields))
+
+    @_guard
+    def list_users(self, limit=500):
+        from google.cloud import firestore as gcf
+
+        query = (self.client.collection("users").select(list(USER_PUBLIC))
+                 .order_by("created_at", direction=gcf.Query.DESCENDING).limit(limit))
+        return [{"id": s.id, **{k: s.to_dict().get(k) for k in USER_PUBLIC}}
+                for s in query.stream(timeout=30)]
+
+    # ---- service-wide daily usage ------------------------------------------------------
+    @_guard
+    def record_usage_day(self, day, increments):
+        from google.cloud import firestore as gcf
+
+        updates = {k: gcf.Increment(v) for k, v in (increments or {}).items() if v}
+        if updates:
+            self.client.collection("usage_daily").document(day).set(updates, merge=True)
+
+    @_guard
+    def list_usage_days(self, limit=31):
+        from google.cloud import firestore as gcf
+        from google.cloud.firestore_v1.field_path import FieldPath
+
+        query = (self.client.collection("usage_daily")
+                 .order_by(FieldPath.document_id(), direction=gcf.Query.DESCENDING).limit(limit))
+        return [{"day": s.id, **s.to_dict()} for s in query.stream(timeout=20)]
 
     # ---- conversations -------------------------------------------------------------
     @_guard
@@ -210,9 +245,10 @@ class FirestoreRepository(Repository):
                 "last_message_preview": preview(last["content"]),
                 "last_message_role": last["role"],
             }
-            for key, value in (conversation_updates or {}).items():
-                if key == "title" and conv.get("title"):
-                    continue  # the title is fixed by the first user message
+            requested = conversation_updates or {}
+            for key, value in requested.items():
+                if keeps_user_title(conv, key, requested):
+                    continue
                 updates[key] = value
             for key, value in (usage_increments or {}).items():
                 if value:
@@ -245,7 +281,7 @@ class FirestoreRepository(Repository):
     # ---- summary ---------------------------------------------------------------------
     @_guard
     def update_summary(self, user_id, conversation_id, *, expected_through_index,
-                       summary, through_index, usage_increments=None):
+                       summary, through_index, usage_increments=None, title=None):
         from google.cloud import firestore as gcf
 
         conv_ref = self._conv_ref(user_id, conversation_id)
@@ -264,6 +300,8 @@ class FirestoreRepository(Repository):
                 "summary_version": conv.get("summary_version", 0) + 1,
                 "context_summary_updated_at": utcnow(),
             }
+            if title and conv.get("title_source") != "user":
+                updates["title"], updates["title_source"] = title, "ai"
             for key, value in (usage_increments or {}).items():
                 if value:
                     updates[f"usage.{key}"] = gcf.Increment(value)
@@ -293,6 +331,48 @@ class FirestoreRepository(Repository):
             if type(exc).__name__ == "NotFound":
                 return
             raise
+
+    # ---- daily question allowance ------------------------------------------------------
+    @_guard
+    def reserve_daily_message(self, user_id, day, limit):
+        from google.cloud import firestore as gcf
+
+        user_ref = self._user_ref(user_id)
+
+        @gcf.transactional
+        def _txn(transaction):
+            snap = user_ref.get(transaction=transaction)
+            if not snap.exists:
+                return None
+            usage = (snap.to_dict() or {}).get("daily_usage") or {}
+            count = usage.get("count", 0) if usage.get("date") == day else 0
+            if count >= limit:
+                return None
+            transaction.update(user_ref, {"daily_usage": {"date": day, "count": count + 1}})
+            return count + 1
+
+        return _txn(self.client.transaction())
+
+    @_guard
+    def refund_daily_message(self, user_id, day):
+        from google.cloud import firestore as gcf
+
+        user_ref = self._user_ref(user_id)
+
+        @gcf.transactional
+        def _txn(transaction):
+            snap = user_ref.get(transaction=transaction)
+            usage = ((snap.to_dict() or {}) if snap.exists else {}).get("daily_usage") or {}
+            if usage.get("date") == day and usage.get("count", 0) > 0:
+                transaction.update(user_ref, {"daily_usage": {"date": day, "count": usage["count"] - 1}})
+
+        _txn(self.client.transaction())
+
+    @_guard
+    def get_daily_usage(self, user_id, day):
+        snap = self._user_ref(user_id).get(field_paths=["daily_usage"], timeout=15)
+        usage = ((snap.to_dict() or {}) if snap.exists else {}).get("daily_usage") or {}
+        return usage.get("count", 0) if usage.get("date") == day else 0
 
     # ---- user memory -----------------------------------------------------------------
     @_guard

@@ -84,7 +84,8 @@ def test_first_message_creates_conversation_and_reply(logged_in, repo, counting)
     conv = repo.get_conversation(uid(logged_in), data["conversation_id"])
     assert conv["philosopher_id"] == "plato" and conv["philosopher_name"] == "플라톤"
     assert conv["message_count"] == 2
-    assert conv["title"] == make_title("남자친구가 요즘 연락을 너무 안 해서 서운해")
+    assert conv["title"] == "연락 문제로 서운함" and conv["title_source"] == "ai"  # from the first reply
+    assert data["title"] == "연락 문제로 서운함"
     assert conv["controller_version"] == "v1" and conv["schema_version"] == 1
     assert conv["summarized_through_message_index"] == -1 and conv["context_summary"] == ""
     msgs = repo.get_messages(uid(logged_in), data["conversation_id"])
@@ -108,7 +109,8 @@ def test_followup_messages_are_ordered(logged_in, repo, counting):
     data = send(logged_in, cid, "3시간째 답장이 없어").get_json()
     assert data["user_message"]["index"] == 2 and data["assistant_message"]["index"] == 3
     conv = repo.get_conversation(uid(logged_in), cid)
-    assert conv["title"] == make_title("남자친구가 요즘 연락을 너무 안 해서 서운해")  # unchanged
+    assert conv["title"] == "연락 문제로 서운함"  # unchanged by later messages
+    assert data["title"] is None
     assert conv["last_message_role"] == "assistant"
     assert len(counting.reply_calls) == 2
 

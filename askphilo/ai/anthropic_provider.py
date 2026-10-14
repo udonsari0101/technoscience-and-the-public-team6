@@ -13,7 +13,7 @@ import logging
 import threading
 
 from .base import AIError, AIProvider, AIReply, AIUsage, SummaryResult
-from .prompts import parse_summary_output
+from .prompts import TITLE_INSTRUCTION, parse_summary_output, split_title
 
 log = logging.getLogger("askphilo.ai")
 
@@ -22,6 +22,9 @@ FALLBACK_MODELS = {"claude-opus-5-5", "claude-opus-5", "claude-fable-5-1", "clau
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
 # Models where thinking can be switched off for short chat replies; on the
 # rest (e.g. Opus 5.5) thinking is always on, so max_tokens gets headroom.
+# Models that accept a mid-conversation {"role": "system"} message.
+MID_SYSTEM_MODELS = {"claude-opus-5-5", "claude-opus-5", "claude-opus-4-8", "claude-sonnet-5-5",
+                     "claude-haiku-5-5", "claude-fable-5", "claude-fable-5-1"}
 THINKING_OFF = {
     "claude-haiku-5-5": {"type": "disabled"},
     "claude-sonnet-5-5": {"type": "between_tools"},
@@ -139,7 +142,11 @@ class AnthropicProvider(AIProvider):
         return "".join(parts).strip()
 
     # ------------------------------------------------------------------- API
-    def reply(self, *, system, messages, philosopher, max_tokens):
+    def reply(self, *, system, messages, philosopher, max_tokens, want_title=False):
+        if want_title and self.model in MID_SYSTEM_MODELS:
+            # Same request, one extra instruction at the end: no separate title call.
+            messages = list(messages) + [{"role": "system", "content": TITLE_INSTRUCTION}]
+            max_tokens += 30
         response = self._call(model=self.model, system=system, messages=messages,
                               max_tokens=max_tokens)
         usage = self._usage(response)
@@ -150,7 +157,7 @@ class AnthropicProvider(AIProvider):
             err = AIError("refusal")
             err.usage = usage
             raise err
-        text = self._text(response)
+        text, title = split_title(self._text(response))
         if stop == "max_tokens" and text:
             text = _trim_to_sentence(text)
         if not text:
@@ -162,7 +169,7 @@ class AnthropicProvider(AIProvider):
                  usage.output_tokens, usage.cache_read_input_tokens)
         return AIReply(text=text, provider=self.name,
                        model=getattr(response, "model", None) or self.model,
-                       usage=usage, stop_reason=stop)
+                       usage=usage, stop_reason=stop, title=title if want_title else None)
 
     def summarize(self, *, system, prompt, philosopher, old_summary, old_memory,
                   transcript, max_tokens):
@@ -175,7 +182,9 @@ class AnthropicProvider(AIProvider):
             err = AIError("refusal")
             err.usage = usage
             raise err
-        summary, memory = parse_summary_output(self._text(response))
+        raw = self._text(response)
+        summary, memory = parse_summary_output(raw)
+        _, title = split_title(raw)
         if stop == "max_tokens":
             memory = None  # a cut-off answer must never overwrite stored memory
         if not summary:
@@ -184,4 +193,4 @@ class AnthropicProvider(AIProvider):
             raise err
         return SummaryResult(summary=summary, provider=self.name,
                              model=getattr(response, "model", None) or self.summary_model,
-                             user_memory=memory, usage=usage)
+                             user_memory=memory, usage=usage, title=title)

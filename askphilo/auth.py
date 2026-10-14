@@ -9,7 +9,7 @@ from urllib.parse import urlsplit
 
 from flask import current_app, g, jsonify, redirect, request, session, url_for
 
-SESSION_KEYS = ("uid", "name", "username")
+SESSION_KEYS = ("uid", "name", "username", "role")
 
 
 def login_user(user: dict) -> None:
@@ -18,6 +18,7 @@ def login_user(user: dict) -> None:
     session["uid"] = user["id"]
     session["name"] = user["name"]
     session["username"] = user["username"]
+    session["role"] = user.get("role")
     session["csrf_token"] = secrets.token_urlsafe(32)
 
 

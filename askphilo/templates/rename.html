@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% from "_macros.html" import back_link %}
+{% block title %}대화 이름 바꾸기 · AskPhilo{% endblock %}
+{% block body %}
+<header class="topbar">
+  {{ back_link(url_for('chat.conversation', conversation_id=conversation.id), '대화로 돌아가기') }}
+  <h1 class="topbar-title">대화 이름 바꾸기</h1>
+  <span class="icon-btn-spacer" aria-hidden="true"></span>
+</header>
+<main id="main" class="page page-enter form-page">
+  <form class="form" method="post" action="{{ url_for('chat.rename', conversation_id=conversation.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field">
+      <label for="title">대화 이름</label>
+      <input id="title" name="title" type="text" maxlength="30" required autocomplete="off"
+             value="{{ conversation.title or '' }}">
+      <p class="field-hint">30자 이내 · 직접 정한 이름은 자동으로 바뀌지 않아요</p>
+    </div>
+    <button class="btn btn-primary btn-block form-submit" type="submit">저장</button>
+  </form>
+</main>
+{% endblock %}
