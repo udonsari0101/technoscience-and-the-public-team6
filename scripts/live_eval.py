@@ -87,7 +87,7 @@ def sentences(text: str) -> int:
     return len([s for s in re.split(r"(?<=[.?!])\s+", text.strip()) if s])
 
 
-def judge(text: str, philosopher: dict, forbidden=(), required=()) -> list[str]:
+def judge(text: str, philosopher: dict, forbidden=(), required=(), max_sentences=5) -> list[str]:
     problems = []
     for bad in FORBIDDEN_ANYWHERE + tuple(forbidden):
         if bad in text:
@@ -97,10 +97,12 @@ def judge(text: str, philosopher: dict, forbidden=(), required=()) -> list[str]:
     if philosopher["name"] in text:
         problems.append("names the philosopher")
     n = sentences(text)
-    if not 2 <= n <= 6:
+    if not 2 <= n <= max_sentences:
         problems.append(f"{n} sentences")
-    if len(text) > 420:
+    if len(text) > (420 if max_sentences <= 5 else 600):
         problems.append(f"{len(text)} chars")
+    if text.count("?") > 1 and max_sentences <= 5:
+        problems.append(f"{text.count('?')} questions")
     if "**" in text or text.lstrip().startswith(("-", "#", "1.")):
         problems.append("markdown formatting")
     return problems
@@ -140,7 +142,8 @@ def main(argv: list[str]) -> int:
             failures += 1
             print(f"FAIL {label}: request failed ({getattr(exc, 'code', type(exc).__name__)})")
             return cid, ""
-        problems = judge(text, p, forbidden, required)
+        problems = judge(text, p, forbidden, required,
+                         max_sentences=8 if label.endswith("S") else 5)
         failures += bool(problems)
         print(f"{'PASS' if not problems else 'FAIL'} {label} [{p['name']}] {'; '.join(problems)}")
         print(f"     user: {message}\n     ai:   {text}\n")

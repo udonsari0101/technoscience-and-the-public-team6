@@ -91,7 +91,9 @@
 - [x] 실제 모델 평가 스크립트 `scripts/live_eval.py` (시나리오 A~G·안전, 호출 수·token 측정, `--yes`+`AI_MODE=anthropic` 없이는 호출 안 함, in-memory 저장)
 - [x] Mock: 공감 문장도 최근 사용분 반복 회피, sheet 열 때 닫기 버튼 focus ring 제거
 - [x] 기본 모델 `claude-opus-5-5`, `ANTHROPIC_EFFORT=low`, thinking headroom
-- [!] 실제 Anthropic 호출 검증 — 사용자가 AI_MODE=anthropic 전환을 결정할 때까지 보류 (유료). Render `ANTHROPIC_MODEL` 현재값 확인 필요
+- [x] 실제 Anthropic 호출 검증 (사용자 승인, `claude-sonnet-5-5`, local · in-memory): `live_eval.py --long` 19회 + style 조정 후 8회. 시나리오 A~G·안전 규칙 준수, 요약 1회(20 메시지), memory 갱신, prompt caching 동작(캐시 안 된 입력 ≈4 token/호출), 총 약 $0.12
+- [x] Style prompt 조정: 한 문단 2~4문장·250자·질문 1개 (평균 출력 250→202 token, 300 상한 도달 감소)
+- [ ] Production `AI_MODE=anthropic` 전환 — 사용자가 Render Dashboard에서 결정 (`ANTHROPIC_MODEL`도 함께 설정)
 
 ## UI / UX
 - [x] Theme: System / Light / Dark (localStorage, headless 브라우저로 저장·해제 확인)
