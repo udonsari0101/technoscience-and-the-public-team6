@@ -11,7 +11,7 @@
       <a class="icon-btn" href="{{ url_for('pages.settings') }}" aria-label="설정">{{ icon('settings') }}</a>
     </div>
     <a class="btn btn-secondary btn-sm chat-sidebar-new" href="{{ url_for('chat.new') }}">{{ icon('plus') }} 새 상담</a>
-    <ul class="chat-sidebar-list">
+    <ul class="chat-sidebar-list" data-sidebar-list>
       {% for c in sidebar['items'] %}
       <li class="conv-item">
         <a class="conv-link" href="{{ url_for('chat.conversation', conversation_id=c.id) }}" {% if c.id == sidebar['active'] %}aria-current="page"{% endif %}>
@@ -23,7 +23,7 @@
         </a>
       </li>
       {% else %}
-      <li class="muted chat-sidebar-empty">아직 대화가 없어요.</li>
+      <li class="muted chat-sidebar-empty" data-sidebar-empty>아직 대화가 없어요.</li>
       {% endfor %}
     </ul>
   </aside>
@@ -52,7 +52,7 @@
           <a href="{{ url_for('chat.rename', conversation_id=conversation.id) if conversation else '#' }}" data-dialog-open="rename-dialog"
              data-conversation-link="/c/{id}/rename" {% if not conversation %}hidden{% endif %}>이름 바꾸기</a>
           <a class="danger-text" href="{{ url_for('chat.delete', conversation_id=conversation.id) if conversation else '#' }}" data-dialog-open="delete-dialog"
-             data-conversation-link="/c/{id}/delete" {% if not conversation %}hidden{% endif %}>대화 삭제</a>
+             data-conversation-link="/c/{id}/delete" {% if not conversation %}hidden{% endif %}>휴지통으로 이동</a>
         </div>
       </div>
     </header>
@@ -74,7 +74,21 @@
         {% for m in messages %}
         <div class="msg msg-{{ m.role }}" data-index="{{ m['index'] }}">
           {% if m.role == 'assistant' %}<img class="avatar avatar-sm" src="{{ url_for('static', filename=p.avatar) }}" alt="" width="36" height="36">{% endif %}
+          {% if m.images %}
+          <div class="msg-body">
+            <div class="msg-photos{% if (m.images|map(attribute='g')|unique|list|length) > 1 %} is-grid{% endif %}">
+              {% for group in m.images|groupby('g') %}
+              <a class="msg-photo" href="{{ group.list[0].url }}" target="_blank" rel="noopener"
+                 data-photo-parts="{{ group.list|map(attribute='url')|join(' ') }}" aria-label="보낸 사진 {{ loop.index }} 크게 보기">
+                <img src="{{ group.list[0].url }}" alt="" width="{{ group.list[0].w }}" height="{{ group.list[0].h }}" loading="lazy">
+              </a>
+              {% endfor %}
+            </div>
+            {% if m.content %}<div class="bubble"><span class="sr-only">나: </span>{{ m.content }}</div>{% endif %}
+          </div>
+          {% else %}
           <div class="bubble"><span class="sr-only">{{ '나: ' if m.role == 'user' else p.name ~ ': ' }}</span>{{ m.content }}</div>
+          {% endif %}
         </div>
         {% endfor %}
         {% if reply_state == 'failed' %}
@@ -105,7 +119,11 @@
       <p class="chat-notice composer-notice" data-limit-notice {% if not status.notice %}hidden{% endif %}>
         {{ status.notice or '' }} <a href="{{ url_for('chat.new') }}">새 상담 시작</a>
       </p>
+      <div class="attach-strip" data-attachments hidden></div>
+      <p class="attach-error" data-attach-error role="alert" hidden></p>
       <form class="composer-inner" data-composer novalidate>
+        <label class="attach-btn" for="attach-input">{{ icon('image') }}<span class="sr-only">사진 첨부</span></label>
+        <input id="attach-input" class="sr-only" type="file" accept="image/*" multiple data-file-input>
         <label class="sr-only" for="composer-input">메시지</label>
         <textarea id="composer-input" name="content" rows="1" maxlength="{{ max_chars }}"
                   placeholder="메시지 입력" enterkeyhint="send" autocomplete="off"></textarea>
@@ -113,6 +131,7 @@
       </form>
       <p class="composer-meta">
         <span class="daily-hint{% if daily.low %} is-low{% endif %}" data-daily>오늘 남은 질문 <strong data-daily-remaining>{{ daily.remaining }}</strong>개</span>
+        <span class="attach-cost" data-attach-cost hidden></span>
       </p>
       {% endif %}
     </div>
@@ -143,16 +162,22 @@
 </dialog>
 
 <dialog class="dialog" id="delete-dialog" aria-labelledby="delete-title">
-  <h2 id="delete-title">이 대화를 삭제할까요?</h2>
-  <p>삭제한 대화는 다시 볼 수 없어요.</p>
+  <h2 id="delete-title">휴지통으로 옮길까요?</h2>
+  <p>휴지통에서 30일 안에 되살릴 수 있어요.</p>
   <form class="dialog-actions" method="post" action="{{ url_for('chat.delete', conversation_id=conversation.id) if conversation else '' }}"
         data-conversation-action="/c/{id}/delete">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="button" class="btn btn-secondary" data-dialog-close>취소</button>
-    <button type="submit" class="btn btn-danger">삭제</button>
+    <button type="submit" class="btn btn-danger">휴지통으로 이동</button>
   </form>
 </dialog>
 
+<dialog class="photo-viewer" id="photo-viewer" aria-label="사진 크게 보기">
+  <button type="button" class="icon-btn photo-viewer-close" data-dialog-close aria-label="닫기">{{ icon('close') }}</button>
+  <div class="photo-viewer-body" data-photo-viewer tabindex="0"></div>
+</dialog>
+
+<template id="tpl-close-icon">{{ icon('close') }}</template>
 <template id="tpl-assistant-avatar"><img class="avatar avatar-sm" src="{{ url_for('static', filename=p.avatar) }}" alt="" width="36" height="36"></template>
 {% endblock %}
 {% block scripts %}<script src="{{ url_for('static', filename='js/chat.js') }}" defer></script>{% endblock %}

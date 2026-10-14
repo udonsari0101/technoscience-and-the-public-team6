@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import threading
 
-from .base import AIError, AIProvider, AIReply, AIUsage, SummaryResult
+from .base import AIError, AIProvider, AIReply, AIUsage, ImageReading, SummaryResult
 from .prompts import TITLE_INSTRUCTION, parse_summary_output, split_title
 
 log = logging.getLogger("askphilo.ai")
@@ -47,12 +47,14 @@ class AnthropicProvider(AIProvider):
     is_billable = True
 
     def __init__(self, *, api_key: str, model: str, summary_model: str | None = None,
+                 vision_model: str | None = None,
                  effort: str = "low", thinking_headroom: int = 1024,
                  timeout: float = 45.0, prompt_cache: bool = True,
                  refusal_fallback: bool = False):
         self.api_key = api_key
         self.model = model
         self.summary_model = summary_model or model
+        self.vision_model = vision_model or model
         self.effort = effort
         self.thinking_headroom = max(0, thinking_headroom)
         self.timeout = timeout
@@ -77,7 +79,8 @@ class AnthropicProvider(AIProvider):
         return self._client
 
     # ----------------------------------------------------------------- request
-    def _call(self, *, model: str, system: str, messages: list[dict], max_tokens: int):
+    def _call(self, *, model: str, system: str, messages: list[dict], max_tokens: int,
+              cache: bool = True):
         import anthropic
 
         params = {
@@ -98,7 +101,7 @@ class AnthropicProvider(AIProvider):
         else:
             # Thinking shares max_tokens with the visible reply.
             params["max_tokens"] = max_tokens + self.thinking_headroom
-        if self.prompt_cache:
+        if self.prompt_cache and cache:
             # Breakpoint 1: the static system prompt (survives summary rewrites).
             params["system"] = [{"type": "text", "text": system,
                                  "cache_control": {"type": "ephemeral"}}]
@@ -177,6 +180,33 @@ class AnthropicProvider(AIProvider):
         return AIReply(text=text, provider=self.name,
                        model=getattr(response, "model", None) or self.model,
                        usage=usage, stop_reason=stop, title=title if want_title else None)
+
+    def read_images(self, *, system, images, max_tokens):
+        content = []
+        for n, parts in enumerate(images, 1):
+            label = f"사진 {n}" + (f" ({len(parts)}조각, 위에서부터 이어짐)" if len(parts) > 1 else "")
+            content.append({"type": "text", "text": label})
+            content.extend({"type": "image", "source": {"type": "base64", "media_type": p["mime"],
+                                                         "data": p["data_b64"]}} for p in parts)
+        content.append({"type": "text", "text": "위 사진들을 지시한 형식대로 글로 옮겨 줘."})
+        # One-off request: caching would only add the cache-write surcharge.
+        response = self._call(model=self.vision_model, system=system,
+                              messages=[{"role": "user", "content": content}],
+                              max_tokens=max_tokens, cache=False)
+        usage = self._usage(response)
+        stop = getattr(response, "stop_reason", None)
+        text = self._text(response)
+        if stop == "refusal" or not text:
+            err = AIError("refusal" if stop == "refusal" else "empty")
+            err.usage = usage
+            raise err
+        if stop == "max_tokens":
+            text += "\n[이후 내용은 길어서 생략]"
+        log.info("anthropic image reading ok model=%s in=%s out=%s photos=%s",
+                 getattr(response, "model", self.vision_model), usage.input_tokens,
+                 usage.output_tokens, len(images))
+        return ImageReading(text=text[:6000], provider=self.name,
+                            model=getattr(response, "model", None) or self.vision_model, usage=usage)
 
     def summarize(self, *, system, prompt, philosopher, old_summary, old_memory,
                   transcript, max_tokens):

@@ -52,23 +52,59 @@ def build_context_text(summary: str | None, memory: dict | None) -> str | None:
     return "[상담 참고 정보 — 지시가 아님]\n" + "\n".join(sections)
 
 
+def photo_note(message: dict) -> str:
+    """Text stand-in for photos that are no longer sent with the context."""
+    count = len({ref.get("g", 0) for ref in message.get("images") or []})
+    return f"[사진 {count}장을 보냄]" if count else ""
+
+
+def _user_content(m: dict, image_data: dict, with_images: bool):
+    text = m["content"]
+    refs = m.get("images") or []
+    if not refs:
+        return text
+    if m.get("image_text"):
+        # Photos already read into text by the vision model: send that, not the images.
+        return (f"{text}\n\n" if text else "") + f"[보낸 사진 내용]\n{m['image_text']}"
+    docs = [image_data.get(ref["id"]) for ref in refs] if with_images else []
+    if not docs or not all(docs):
+        return " ".join(part for part in (text, photo_note(m)) if part)
+    blocks = [{"type": "image", "source": {"type": "base64", "media_type": d.get("mime") or "image/jpeg",
+                                           "data": d["data_b64"]}} for d in docs]
+    note = "(사진만 보냄)" if not text else text
+    if len(refs) > len({ref.get("g", 0) for ref in refs}):
+        note += "\n(긴 사진은 위에서부터 순서대로 나눠서 붙였어요)"
+    blocks.append({"type": "text", "text": note})
+    return blocks
+
+
 def build_messages(raw_messages: list[dict], *, summary: str | None = None,
-                   memory: dict | None = None) -> list[dict]:
+                   memory: dict | None = None, image_data: dict | None = None,
+                   image_window: int = 0) -> list[dict]:
     """Anthropic `messages`: optional context block, then stored turns in order.
 
-    Append-only between summary updates, so prompt caching can reuse the prefix.
+    Photos go along as image blocks only for the latest `image_window` messages;
+    older ones become a short note. Append-only between summary updates, so
+    prompt caching can reuse the prefix.
     """
     out: list[dict] = []
     context = build_context_text(summary, memory)
     if context:
         out.append({"role": "user", "content": context})
-    for m in raw_messages:
+    first_with_images = len(raw_messages) - image_window
+    for i, m in enumerate(raw_messages):
         role = "assistant" if m["role"] == "assistant" else "user"
-        out.append({"role": role, "content": m["content"]})
+        content = (_user_content(m, image_data or {}, i >= first_with_images)
+                   if role == "user" else m["content"])
+        out.append({"role": role, "content": content})
     if out and out[0]["role"] != "user":
         # The API requires a user turn first (window may start mid-pair).
         out.insert(0, {"role": "user", "content": "(이전 대화에 이어서)"})
     return out
+
+
+# Photo reading (vision model): turns attached photos into text once.
+IMAGE_READER = prompt_files.load("image_reader.md")
 
 
 # ---------------------------------------------------------------------------
@@ -117,7 +153,10 @@ def build_summary_prompt(*, old_summary: str | None, old_memory: dict | None,
     lines += ["", f"[새 대화] (상담 철학자: {philosopher['name']})"]
     for m in transcript:
         speaker = "상담자" if m["role"] == "assistant" else "사용자"
-        lines.append(f"{speaker}: {' '.join(m['content'].split())}")
+        text = " ".join(part for part in (" ".join(m["content"].split()), photo_note(m)) if part)
+        if m.get("image_text"):
+            text += " (사진 내용: " + " ".join(m["image_text"].split())[:300] + ")"
+        lines.append(f"{speaker}: {text}")
     return "\n".join(lines)
 
 

@@ -18,6 +18,7 @@ Context sent to the model:
 
 from __future__ import annotations
 
+import base64
 import logging
 import re
 import threading
@@ -32,6 +33,7 @@ from ..ai.prompts import clean_title
 from ..data import Conflict, DataError, Repository
 from ..data.base import SCHEMA_VERSION, utcnow
 from ..philosophers import get_philosopher
+from . import images as image_files
 from .quota import MSG_DAILY_LIMIT, daily_status, today_kst
 
 log = logging.getLogger("askphilo.chat")
@@ -53,6 +55,23 @@ MSG_CONFLICT = "대화가 다른 곳에서 바뀌었어요. 새로고침해 주�
 MSG_TITLE_EMPTY = "대화 이름을 입력해 주세요."
 MSG_TITLE_LONG = "대화 이름은 30자 이내로 입력해 주세요."
 USER_TITLE_MAX = 30
+
+# Photos: a cheap vision model turns them into text once (chat captures → a
+# "나:/상대:" transcript, other photos → a short description); the counselling
+# model only reads that text. If reading fails, the photos themselves go to the
+# counselling model, but only with the few latest messages.
+IMAGE_CONTEXT_MESSAGES = 4
+IMAGE_READING_MAX_TOKENS = 1500
+UPLOAD_ID_RE = re.compile(r"^[0-9a-f]{32}$")
+IMAGE_ID_RE = re.compile(r"^[0-9a-f]{32}-[0-9]$")
+STALE_UPLOAD_HOURS = 24  # photos picked but never sent are removed after this
+MAX_PENDING_UPLOADS = 20
+TRASH_DAYS = 30  # trashed conversations are deleted for good after this
+
+MSG_BAD_IMAGE = "사진을 다시 올려 주세요."
+MSG_TOO_MANY_IMAGES = f"사진은 한 번에 {image_files.MAX_IMAGES}장까지 보낼 수 있어요."
+MSG_TOO_MANY_PENDING = "올려 둔 사진이 너무 많아요. 보내거나 지운 뒤 다시 올려 주세요."
+MSG_NOT_ENOUGH = "오늘 남은 질문은 {remaining}개인데 이번 메시지에는 {needed}개가 필요해요. 사진은 1장마다 질문 1개를 더 써요."
 
 # reply_state on the conversation document
 REPLY_PENDING, REPLY_FAILED, REPLY_DONE = "pending", "failed", "done"
@@ -125,17 +144,33 @@ def limit_status(message_count: int, settings: ChatSettings) -> dict:
     }
 
 
-def public_message(m: dict) -> dict:
-    """Message fields safe to send to the browser."""
-    return {"index": m["message_index"], "role": m["role"], "content": m["content"]}
+def public_message(m: dict, conversation_id: str | None = None) -> dict:
+    """Message fields safe to send to the browser (photos as same-origin URLs)."""
+    out = {"index": m["message_index"], "role": m["role"], "content": m["content"]}
+    if m.get("images"):
+        out["images"] = [{"url": f"/images/{ref['id']}", "w": ref.get("w"), "h": ref.get("h"),
+                          "g": ref.get("g", 0)} for ref in m["images"]]
+    return out
 
 
 def _usage_increments(provider: AIProvider, usage, *, summary: bool = False,
                       failed: bool = False, model: str | None = None,
-                      price_overrides: dict | None = None) -> dict:
+                      price_overrides: dict | None = None, vision: bool = False) -> dict:
     if not provider.is_billable:
         return {"mock_calls": 1}
     inc = {"api_calls": 1}
+    if vision:  # photo reading: priced, but not a reply (keeps the per-reply average honest)
+        inc["vision_calls"] = 1
+        if failed:
+            inc["failed_calls"] = 1
+        cost = pricing.cost_micro_usd(model or getattr(provider, "vision_model", None), usage, price_overrides)
+        if cost:
+            inc["cost_micro_usd"] = cost
+        if usage:
+            inc.update(input_tokens=usage.input_tokens, output_tokens=usage.output_tokens,
+                       cache_read_input_tokens=usage.cache_read_input_tokens,
+                       cache_creation_input_tokens=usage.cache_creation_input_tokens)
+        return inc
     # What this call cost, priced with the model that actually answered.
     model = model or getattr(provider, "summary_model" if summary else "model", None)
     cost = pricing.cost_micro_usd(model, usage, price_overrides)
@@ -230,7 +265,7 @@ class ConversationService:
         if not isinstance(conversation_id, str) or not UUID_RE.match(conversation_id):
             raise ChatError("not_found", MSG_NOT_FOUND, 404)
         conv = self.repo.get_conversation(user_id, conversation_id)
-        if conv is None:
+        if conv is None or conv.get("deleted_at"):  # trashed: only the trash page sees it
             raise ChatError("not_found", MSG_NOT_FOUND, 404)
         return conv
 
@@ -249,18 +284,36 @@ class ConversationService:
         return REPLY_FAILED
 
     # ---- sending -------------------------------------------------------------------
-    def validate(self, content) -> str:
+    def validate(self, content, *, allow_empty: bool = False) -> str:
+        """allow_empty: a message may be photos only."""
+        if content is None and allow_empty:
+            return ""
         if not isinstance(content, str):
             raise ChatError("empty", MSG_EMPTY, 400)
         text = content.strip()
-        if not text:
+        if not text and not allow_empty:
             raise ChatError("empty", MSG_EMPTY, 400)
         if len(text) > self.settings.max_user_chars:
             raise ChatError("too_long", MSG_TOO_LONG.format(limit=self.settings.max_user_chars), 400)
         return text
 
-    def send(self, user_id: str, conversation_id: str, content) -> dict:
-        text = self.validate(content)
+    def check_images(self, image_ids) -> list[str]:
+        """Upload ids sent with a message (validated, de-duplicated, in order)."""
+        if image_ids is None:
+            return []
+        if not isinstance(image_ids, list) or not all(isinstance(i, str) for i in image_ids):
+            raise ChatError("bad_image", MSG_BAD_IMAGE, 400)
+        ids = list(dict.fromkeys(image_ids))
+        if len(ids) > image_files.MAX_IMAGES:
+            raise ChatError("too_many_images", MSG_TOO_MANY_IMAGES, 400)
+        if not all(UPLOAD_ID_RE.match(i) for i in ids):
+            raise ChatError("bad_image", MSG_BAD_IMAGE, 400)
+        return ids
+
+    def send(self, user_id: str, conversation_id: str, content, image_ids: list | None = None) -> dict:
+        """image_ids: ids returned by stage_upload (each photo uses one more question)."""
+        image_ids = self.check_images(image_ids)
+        text = self.validate(content, allow_empty=bool(image_ids))
         conv = self.get(user_id, conversation_id)
         with self._replying.hold(f"{user_id}/{conversation_id}") as acquired:
             if not acquired:
@@ -268,15 +321,16 @@ class ConversationService:
             status = limit_status(conv.get("message_count", 0), self.settings)
             if status["hard_limit_reached"]:
                 raise ChatError("hard_limit", MSG_HARD_LIMIT, 409, status=status)
-            day, used = self._reserve(user_id)
+            uploads = self._load_uploads(user_id, image_ids)
+            questions = 1 + len(uploads)
+            day, used = self._reserve(user_id, questions)
             try:
                 updates = {"reply_state": REPLY_PENDING}
                 if not conv.get("title"):
                     # Instant placeholder; the first reply refines it (same API call).
-                    updates["title"] = make_title(text)
+                    updates["title"] = make_title(text) if text else "사진"
                     updates["title_source"] = "auto"
-                # 1) Persist the user's message first — an AI failure must never lose it.
-                stored = self.repo.append_messages(user_id, conversation_id, [{
+                message = {
                     "role": "user",
                     "content": text,
                     "provider": None,
@@ -284,11 +338,23 @@ class ConversationService:
                     "input_tokens": None,
                     "output_tokens": None,
                     "controller_version": conv.get("controller_version", self.settings.controller_version),
-                }], conversation_updates=updates)
+                }
+                if uploads:
+                    message["images"] = [{"id": d["_id"], "w": d.get("width"), "h": d.get("height"), "g": g}
+                                         for g, parts in enumerate(uploads) for d in parts]
+                    reading = self._read_images(user_id, conversation_id, uploads)
+                    if reading:
+                        message["image_text"] = reading
+                    # Claim the photos for this message (index = the one append_messages assigns).
+                    self.repo.attach_images(user_id, [d["_id"] for parts in uploads for d in parts],
+                                            conversation_id, conv.get("message_count", 0))
+                # 1) Persist the user's message first — an AI failure must never lose it.
+                stored = self.repo.append_messages(user_id, conversation_id, [message],
+                                                   conversation_updates=updates)
                 # 2) Exactly one reply request.
                 result = self._reply(user_id, conv, stored[0])
             except Exception:
-                self._refund(user_id, day)
+                self._refund(user_id, day, questions)
                 raise
             result["daily"] = daily_status(used, self.settings.daily_limit)
             return result
@@ -318,22 +384,118 @@ class ConversationService:
             result["daily"] = daily_status(used, self.settings.daily_limit)
             return result
 
+    # ---- photos ----------------------------------------------------------------------
+    def stage_upload(self, user_id: str, fileobj) -> dict:
+        """Shrink one uploaded photo and keep it (base64 JPEG parts) until a message uses it."""
+        pending = self.repo.find_images(user_id, None)
+        stale = [i for i, created in pending.items()
+                 if created and utcnow() - created > timedelta(hours=STALE_UPLOAD_HOURS)]
+        if stale:
+            self.repo.delete_images(user_id, stale)
+        if len({i.split("-")[0] for i in pending} - {i.split("-")[0] for i in stale}) >= MAX_PENDING_UPLOADS:
+            raise ChatError("too_many_pending", MSG_TOO_MANY_PENDING, 429)
+        parts = image_files.process_image(fileobj)  # ImageError → the view answers 400
+        upload_id = uuid.uuid4().hex
+        now = utcnow()
+        for n, part in enumerate(parts):
+            self.repo.put_image(user_id, f"{upload_id}-{n}", {
+                "data_b64": base64.b64encode(part["data"]).decode("ascii"),
+                "mime": "image/jpeg",
+                "width": part["width"],
+                "height": part["height"],
+                "bytes": len(part["data"]),
+                "upload_id": upload_id,
+                "part": n,
+                "conversation_id": None,
+                "message_index": None,
+                "created_at": now,
+            })
+        return {"id": upload_id, "parts": len(parts), "url": f"/images/{upload_id}-0",
+                "width": parts[0]["width"], "height": parts[0]["height"]}
+
+    def discard_upload(self, user_id: str, upload_id: str) -> None:
+        """Remove a photo that was picked but not sent."""
+        if not isinstance(upload_id, str) or not UPLOAD_ID_RE.match(upload_id):
+            raise ChatError("bad_image", MSG_BAD_IMAGE, 400)
+        ids = [f"{upload_id}-{n}" for n in range(image_files.MAX_PARTS)]
+        meta = self.repo.get_images(user_id, ids, with_data=False)
+        unsent = [i for i, d in meta.items() if d.get("conversation_id") is None]
+        if unsent:
+            self.repo.delete_images(user_id, unsent)
+
+    def _load_uploads(self, user_id: str, upload_ids: list[str]) -> list[list[dict]]:
+        """Unsent uploads of this user, each as its parts (with data) top to bottom."""
+        if not upload_ids:
+            return []
+        ids = [f"{u}-{n}" for u in upload_ids for n in range(image_files.MAX_PARTS)]
+        docs = self.repo.get_images(user_id, ids)
+        uploads = []
+        for upload_id in upload_ids:
+            parts = sorted((dict(d, _id=i) for i, d in docs.items() if d.get("upload_id") == upload_id),
+                           key=lambda d: d.get("part", 0))
+            if not parts or any(d.get("conversation_id") is not None for d in parts):
+                raise ChatError("bad_image", MSG_BAD_IMAGE, 400)
+            uploads.append(parts)
+        return uploads
+
+    def _read_images(self, user_id: str, conversation_id: str, uploads: list[list[dict]]) -> str | None:
+        """Photos → text with the (cheap) vision model. None: send the photos themselves."""
+        try:
+            reading = self.provider.read_images(
+                system=prompts.IMAGE_READER,
+                images=[[{"mime": d.get("mime") or "image/jpeg", "data_b64": d["data_b64"]} for d in parts]
+                        for parts in uploads],
+                max_tokens=IMAGE_READING_MAX_TOKENS)
+        except NotImplementedError:
+            return None
+        except AIError as exc:
+            log.warning("image reading failed conv=%s reason=%s", conversation_id, exc.reason)
+            usage = getattr(exc, "usage", None)
+            if usage and self.provider.is_billable:
+                failed = _usage_increments(self.provider, usage, vision=True, failed=True,
+                                           price_overrides=self.settings.price_overrides)
+                self._track_usage(user_id, conversation_id, failed)
+            return None
+        increments = _usage_increments(self.provider, reading.usage, vision=True, model=reading.model,
+                                       price_overrides=self.settings.price_overrides)
+        self._track_usage(user_id, conversation_id, increments)
+        return reading.text or None
+
+    def _track_usage(self, user_id: str, conversation_id: str, increments: dict) -> None:
+        try:
+            self.repo.add_usage(user_id, conversation_id, increments)
+        except DataError:
+            log.warning("could not record usage conv=%s", conversation_id)
+        self._track_day(increments)
+
+    def image(self, user_id: str, image_id: str) -> tuple[bytes, str] | None:
+        """Decoded photo part of this user (for display), or None."""
+        if not isinstance(image_id, str) or not IMAGE_ID_RE.match(image_id):
+            return None
+        doc = self.repo.get_images(user_id, [image_id]).get(image_id)
+        if not doc or not doc.get("data_b64"):
+            return None
+        return base64.b64decode(doc["data_b64"]), doc.get("mime") or "image/jpeg"
+
     # ---- daily allowance -------------------------------------------------------------
     def daily(self, user_id: str) -> dict:
         """Today's question allowance (KST day) for display."""
         return daily_status(self.repo.get_daily_usage(user_id, today_kst()), self.settings.daily_limit)
 
-    def _reserve(self, user_id: str) -> tuple[str, int]:
+    def _reserve(self, user_id: str, count: int = 1) -> tuple[str, int]:
         day = today_kst()
-        used = self.repo.reserve_daily_message(user_id, day, self.settings.daily_limit)
+        used = self.repo.reserve_daily_message(user_id, day, self.settings.daily_limit, count)
         if used is None:
             limit = self.settings.daily_limit
-            raise ChatError("daily_limit", MSG_DAILY_LIMIT, 429, daily=daily_status(limit, limit))
+            current = self.repo.get_daily_usage(user_id, day)
+            message = (MSG_NOT_ENOUGH.format(remaining=limit - current, needed=count)
+                       if current < limit else MSG_DAILY_LIMIT)
+            raise ChatError("daily_limit", message, 429, daily=daily_status(current, limit), needed=count)
         return day, used
 
-    def _refund(self, user_id: str, day: str) -> None:
+    def _refund(self, user_id: str, day: str, count: int = 1) -> None:
         try:
-            self.repo.refund_daily_message(user_id, day)
+            self.repo.refund_daily_message(user_id, day, count)
         except DataError:
             log.warning("could not refund daily question user=%s", user_id)
 
@@ -353,7 +515,13 @@ class ConversationService:
         raw = self.repo.get_messages(user_id, conv["id"], min_index=through + 1,
                                      limit=self.settings.summary_trigger)
         memory = self.repo.get_user_memory(user_id)
-        messages = prompts.build_messages(raw, summary=conv.get("context_summary"), memory=memory)
+        # Only photos that could not be read into text travel as images (latest messages only).
+        recent_ids = [ref["id"] for m in raw[-IMAGE_CONTEXT_MESSAGES:]
+                      if m["role"] == "user" and not m.get("image_text")
+                      for ref in m.get("images") or []]
+        image_data = self.repo.get_images(user_id, recent_ids) if recent_ids else {}
+        messages = prompts.build_messages(raw, summary=conv.get("context_summary"), memory=memory,
+                                          image_data=image_data, image_window=IMAGE_CONTEXT_MESSAGES)
         return system, messages, philosopher, raw
 
     def build_request(self, user_id: str, conversation_id: str) -> dict:
@@ -385,7 +553,8 @@ class ConversationService:
         except DataError:
             pass  # best effort; the reply already failed
         return ChatError("ai_failed", MSG_AI_FAILED, 502, retryable=True,
-                         user_message=public_message(user_message), conversation_id=conversation_id)
+                         user_message=public_message(user_message, conversation_id),
+                         conversation_id=conversation_id)
 
     def _reply(self, user_id: str, conv: dict, user_message: dict) -> dict:
         conversation_id = conv["id"]
@@ -433,8 +602,8 @@ class ConversationService:
         count = assistant_message["message_index"] + 1
         return {
             "conversation_id": conversation_id,
-            "user_message": public_message(user_message),
-            "assistant_message": public_message(assistant_message),
+            "user_message": public_message(user_message, conversation_id),
+            "assistant_message": public_message(assistant_message, conversation_id),
             "status": limit_status(count, self.settings),
             "summary_due": self.summary_due(conv, count),
             "title": new_title,
@@ -535,11 +704,51 @@ class ConversationService:
              limit: int = 30) -> dict:
         msgs = self.repo.get_messages(user_id, conversation_id, before_index=before, limit=limit)
         first = msgs[0]["message_index"] if msgs else 0
-        return {"messages": [public_message(m) for m in msgs], "has_more": first > 0,
+        return {"messages": [public_message(m, conversation_id) for m in msgs], "has_more": first > 0,
                 "oldest_index": first}
 
     def delete(self, user_id: str, conversation_id: str) -> bool:
+        """Permanent delete (messages and photos too)."""
         return self.repo.delete_conversation(user_id, conversation_id)
+
+    # ---- trash ---------------------------------------------------------------------
+    def trash(self, user_id: str, conversation_id: str) -> None:
+        """Move to the trash (restorable for TRASH_DAYS days)."""
+        self.get(user_id, conversation_id)
+        self.repo.trash_conversation(user_id, conversation_id, utcnow())
+
+    def _trashed(self, user_id: str, conversation_id: str) -> dict:
+        if not isinstance(conversation_id, str) or not UUID_RE.match(conversation_id):
+            raise ChatError("not_found", MSG_NOT_FOUND, 404)
+        conv = self.repo.get_conversation(user_id, conversation_id)
+        if conv is None or not conv.get("deleted_at"):
+            raise ChatError("not_found", MSG_NOT_FOUND, 404)
+        return conv
+
+    def restore(self, user_id: str, conversation_id: str) -> None:
+        self._trashed(user_id, conversation_id)
+        self.repo.restore_conversation(user_id, conversation_id)
+
+    def delete_forever(self, user_id: str, conversation_id: str) -> None:
+        self._trashed(user_id, conversation_id)
+        self.repo.delete_conversation(user_id, conversation_id)
+
+    def trash_items(self, user_id: str) -> list[dict]:
+        """Trashed conversations; ones older than TRASH_DAYS are deleted on the way."""
+        items = []
+        for conv in self.repo.list_trash(user_id):
+            purge_at = conv["deleted_at"] + timedelta(days=TRASH_DAYS)
+            if purge_at <= utcnow():
+                self.repo.delete_conversation(user_id, conv["id"])
+                continue
+            items.append({**conv, "purge_at": purge_at})
+        return items
+
+    def empty_trash(self, user_id: str) -> int:
+        items = self.repo.list_trash(user_id, limit=500)
+        for conv in items:
+            self.repo.delete_conversation(user_id, conv["id"])
+        return len(items)
 
     def rename(self, user_id: str, conversation_id: str, title) -> str:
         """User-chosen title; automatic titles never replace it afterwards."""

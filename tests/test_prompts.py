@@ -19,7 +19,7 @@ def test_system_prompt_composition():
     assert prompts.BASE in on and prompts.STYLE in on and p["prompt"] in on
     assert prompts.CONTROLLER_V1 in on and prompts.CONTROLLER_V1 not in off
     assert p["prompt"] in off
-    assert len(on) < 3000  # sent on every request: keep it compact
+    assert len(on) < 3400  # sent on every request (cached): keep it compact
 
 
 @pytest.mark.parametrize("p", PHILOSOPHERS, ids=lambda p: p["id"])
@@ -205,8 +205,9 @@ def test_mock_does_not_sugar_coat_partner_wrongdoing(pid):
 
 
 def test_style_and_controller_reflect_team_rules():
-    assert "기본은 짧게" in prompts.STYLE and "문장 수로 지킨다" in prompts.STYLE
-    assert "80자 이내" in prompts.STYLE and "150자 이내" in prompts.STYLE and "200자 이내" in prompts.STYLE
+    assert "기본은 짧게" in prompts.STYLE and "문장 수로 지킨다" in prompts.STYLE and "카톡" in prompts.STYLE
+    assert "60자 이내" in prompts.STYLE and "120자 이내" in prompts.STYLE and "180자 이내" in prompts.STYLE
+    assert "대화 캡처는 거의 요청하지 않는다" in prompts.STYLE
     assert "물음표도 한 번만" in prompts.STYLE and "줄바꿈 없이" in prompts.STYLE
     assert "늘이지 않는다" in prompts.STYLE
     assert "열린 질문" in prompts.STYLE and "맨 끝에 하나만" in prompts.STYLE

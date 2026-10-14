@@ -71,7 +71,7 @@ with sync_playwright() as p:
     shot(page, "02-signup-390")
     page.click("button[type=submit]")
     page.wait_for_url("**/home")
-    check("signup lands on home", "안녕하세요, 브라우저님" in page.content())
+    check("signup lands on home", "브라우저님, 안녕하세요" in page.content())
     shot(page, "03-home-empty-390")
 
     # ---- selection + bottom sheet
@@ -131,7 +131,7 @@ with sync_playwright() as p:
     page.set_viewport_size({"width": 375, "height": 800})
     page.goto(chat_url)
     small = page.evaluate("""() => [...document.querySelectorAll('a, button, input, textarea, [role=button]')]
-        .filter(e => e.offsetParent !== null && !e.classList.contains('skip-link'))
+        .filter(e => e.offsetParent !== null && !e.classList.contains('skip-link') && !e.classList.contains('sr-only'))
         .map(e => { const r = e.getBoundingClientRect(); return {t: (e.getAttribute('aria-label') || e.textContent || e.tagName).trim().slice(0,20), w: Math.round(r.width), h: Math.round(r.height)} })
         .filter(r => r.h < 44 && r.w < 44 || (r.h < 36))""")
     check("touch targets >= 44px on chat", not small, str(small[:5]))
@@ -154,14 +154,14 @@ with sync_playwright() as p:
     # ---- delete via dialog
     page.goto(chat_url)
     page.click("[data-menu-toggle]")
-    page.click("text=대화 삭제")
+    page.click("text=휴지통으로 이동")
     page.wait_for_selector("#delete-dialog[open]")
-    check("delete dialog copy", "이 대화를 삭제할까요?" in page.inner_text("#delete-dialog")
-          and "삭제한 대화는 다시 볼 수 없어요." in page.inner_text("#delete-dialog"))
+    check("delete dialog copy", "휴지통으로 옮길까요?" in page.inner_text("#delete-dialog")
+          and "30일 안에 되살릴 수 있어요." in page.inner_text("#delete-dialog"))
     shot(page, "12-delete-dialog-390")
     page.click("#delete-dialog button[type=submit]")
     page.wait_for_url("**/history")
-    check("deleted → history with toast", "대화를 삭제했어요." in page.content())
+    check("trashed → history with toast", "휴지통으로 옮겼어요." in page.content())
 
     # ---- reduced motion respected
     rm = browser.new_context(viewport={"width": 390, "height": 844}, reduced_motion="reduce")

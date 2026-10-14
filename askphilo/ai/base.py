@@ -42,9 +42,24 @@ class SummaryResult:
     title: str | None = None
 
 
+@dataclass
+class ImageReading:
+    """Attached photos turned into text by the (cheap) vision model."""
+    text: str
+    provider: str
+    model: str
+    usage: AIUsage = field(default_factory=AIUsage)
+
+
 class AIProvider:
     name = "abstract"
     is_billable = False  # True when calls cost money (counted as api_calls)
+
+    def read_images(self, *, system: str, images: list[list[dict]], max_tokens: int) -> ImageReading:
+        """images: per photo, its parts top to bottom: [{"mime", "data_b64"}].
+        Providers that can't read photos raise NotImplementedError (photos then
+        go to the reply model directly)."""
+        raise NotImplementedError
 
     def reply(self, *, system: str, messages: list[dict], philosopher: dict,
               max_tokens: int, want_title: bool = False) -> AIReply:

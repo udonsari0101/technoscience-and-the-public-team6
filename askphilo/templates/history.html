@@ -5,7 +5,10 @@
 <header class="topbar">
   {{ back_link(url_for('pages.home'), '홈으로') }}
   <h1 class="topbar-title">대화 기록</h1>
-  <a class="icon-btn" href="{{ url_for('chat.new') }}" aria-label="새 상담 시작">{{ icon('plus') }}</a>
+  <span class="topbar-actions">
+    <a class="icon-btn" href="{{ url_for('chat.trash') }}" aria-label="휴지통">{{ icon('trash') }}</a>
+    <a class="icon-btn" href="{{ url_for('chat.new') }}" aria-label="새 상담 시작">{{ icon('plus') }}</a>
+  </span>
 </header>
 <main id="main" class="page page-enter">
   {% if conversations %}
@@ -23,7 +26,7 @@
         </span>
       </a>
       <a class="icon-btn conv-delete" href="{{ url_for('chat.delete', conversation_id=c.id) }}"
-         data-dialog-open="delete-{{ c.id }}" aria-label="{{ c.title or '새 상담' }} 삭제">{{ icon('trash') }}</a>
+         data-dialog-open="delete-{{ c.id }}" aria-label="{{ c.title or '새 상담' }} 휴지통으로 이동">{{ icon('trash') }}</a>
     </li>
     {% endfor %}
   </ul>
@@ -32,12 +35,12 @@
   {% endif %}
   {% for c in conversations %}
   <dialog class="dialog" id="delete-{{ c.id }}" aria-labelledby="delete-title-{{ c.id }}">
-    <h2 id="delete-title-{{ c.id }}">이 대화를 삭제할까요?</h2>
-    <p>삭제한 대화는 다시 볼 수 없어요.</p>
+    <h2 id="delete-title-{{ c.id }}">휴지통으로 옮길까요?</h2>
+    <p>휴지통에서 30일 안에 되살릴 수 있어요.</p>
     <form class="dialog-actions" method="post" action="{{ url_for('chat.delete', conversation_id=c.id) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="button" class="btn btn-secondary" data-dialog-close>취소</button>
-      <button type="submit" class="btn btn-danger">삭제</button>
+      <button type="submit" class="btn btn-danger">휴지통으로 이동</button>
     </form>
   </dialog>
   {% endfor %}

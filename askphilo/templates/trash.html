@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% from "_macros.html" import back_link, icon %}
+{% block title %}휴지통 · AskPhilo{% endblock %}
+{% block body %}
+<header class="topbar">
+  {{ back_link(url_for('chat.history'), '대화 기록으로') }}
+  <h1 class="topbar-title">휴지통</h1>
+  <span class="icon-btn-spacer" aria-hidden="true"></span>
+</header>
+<main id="main" class="page page-enter">
+  {% if conversations %}
+  <p class="muted trash-note">30일이 지나면 자동으로 영구 삭제돼요.</p>
+  <ul class="conv-list">
+    {% for c in conversations %}
+    <li class="conv-item trash-item">
+      <span class="conv-link conv-static">
+        <img class="avatar avatar-md" src="{{ url_for('static', filename='img/philosophers/' ~ c.philosopher_id ~ '.svg') }}" alt="" width="44" height="44">
+        <span class="conv-body">
+          <span class="conv-top">
+            <span class="conv-title">{{ c.title or '새 상담' }}</span>
+          </span>
+          <span class="conv-sub">{{ c.philosopher_name }} · {{ c.deleted_at|relative_time }}</span>
+        </span>
+      </span>
+      <form method="post" action="{{ url_for('chat.restore', conversation_id=c.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="icon-btn" aria-label="{{ c.title or '새 상담' }} 되살리기">{{ icon('restore') }}</button>
+      </form>
+      <a class="icon-btn conv-delete" href="#forever-{{ c.id }}" data-dialog-open="forever-{{ c.id }}"
+         aria-label="{{ c.title or '새 상담' }} 영구 삭제">{{ icon('trash') }}</a>
+    </li>
+    {% endfor %}
+  </ul>
+  <button type="button" class="btn btn-ghost btn-block danger-text load-more" data-dialog-open="empty-trash">휴지통 비우기</button>
+  {% for c in conversations %}
+  <dialog class="dialog" id="forever-{{ c.id }}" aria-labelledby="forever-title-{{ c.id }}">
+    <h2 id="forever-title-{{ c.id }}">영구 삭제할까요?</h2>
+    <p>대화와 사진이 모두 지워지고 되돌릴 수 없어요.</p>
+    <form class="dialog-actions" method="post" action="{{ url_for('chat.delete_forever', conversation_id=c.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="button" class="btn btn-secondary" data-dialog-close>취소</button>
+      <button type="submit" class="btn btn-danger">영구 삭제</button>
+    </form>
+  </dialog>
+  {% endfor %}
+  <dialog class="dialog" id="empty-trash" aria-labelledby="empty-trash-title">
+    <h2 id="empty-trash-title">휴지통을 비울까요?</h2>
+    <p>휴지통의 대화 {{ conversations|length }}개가 모두 영구 삭제돼요.</p>
+    <form class="dialog-actions" method="post" action="{{ url_for('chat.empty_trash') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="button" class="btn btn-secondary" data-dialog-close>취소</button>
+      <button type="submit" class="btn btn-danger">비우기</button>
+    </form>
+  </dialog>
+  {% else %}
+  <div class="empty">
+    <p>휴지통이 비어 있어요.</p>
+  </div>
+  {% endif %}
+</main>
+{% endblock %}

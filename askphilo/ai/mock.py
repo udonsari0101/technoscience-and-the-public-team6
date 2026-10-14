@@ -12,7 +12,7 @@ from __future__ import annotations
 import hashlib
 import time
 
-from .base import AIProvider, AIReply, AIUsage, SummaryResult
+from .base import AIProvider, AIReply, AIUsage, ImageReading, SummaryResult
 
 TOPIC_KEYWORDS = {
     "contact": ("연락", "답장", "카톡", "문자", "읽씹", "안읽씹", "디엠", "dm"),
@@ -59,6 +59,7 @@ SELF_BLAME_KEYWORDS = ("내 탓", "내탓", "내 잘못", "내가 예민", "내�
 HONEST_LEAD = "돌아보려는 마음은 좋지만, 상대가 한 행동의 책임까지 네가 질 필요는 없어."
 HONEST_CORE = "그런 일이 반복된다면 네가 예민해서라기보다 신뢰를 깎는 행동 자체가 문제일 수 있어."
 HONEST_QUESTION = "이 관계에서 네가 받아들일 수 있는 것과 없는 건 각각 뭐야?"
+PHOTO_LEAD = "보내준 사진 잘 봤어."
 # Messages this short ("고마워", "요즘 마음이 복잡해") get a lead + question only.
 SHORT_MESSAGE_CHARS = 20
 THANKS_KEYWORDS = ("고마워", "고맙", "감사", "땡큐")
@@ -80,6 +81,17 @@ def _keywords(text: str) -> set[str]:
     """Rough content words (3+ chars) used to avoid saying the same idea twice."""
     words = {w.strip(".,?!'\"·") for w in text.split()}
     return {w for w in words if len(w) >= 3}
+
+
+def _text_of(content) -> str:
+    """Plain text of a message whose content may be a list of blocks (photos)."""
+    if isinstance(content, str):
+        return content
+    return " ".join(b.get("text", "") for b in content or [] if isinstance(b, dict) and b.get("type") == "text")
+
+
+def _has_image(content) -> bool:
+    return isinstance(content, list) and any(isinstance(b, dict) and b.get("type") == "image" for b in content)
 
 
 def _has(text: str, words) -> bool:
@@ -166,13 +178,20 @@ class MockProvider(AIProvider):
             time.sleep(max(0, self.delay_ms + jitter) / 1000)
 
     def reply(self, *, system, messages, philosopher, max_tokens, want_title=False):
-        user_turns = [m["content"] for m in messages if m["role"] == "user"
-                      and not str(m["content"]).startswith("[상담 참고 정보")]
+        user_msgs = [m for m in messages if m["role"] == "user"
+                     and not _text_of(m["content"]).startswith("[상담 참고 정보")]
+        user_turns = [_text_of(m["content"]) for m in user_msgs]
         last = user_turns[-1] if user_turns else ""
+        sent_photo = bool(user_msgs) and _has_image(user_msgs[-1]["content"])
+        if "[보낸 사진 내용]" in last:  # photos already read into text
+            sent_photo = True
+            last = last.split("[보낸 사진 내용]")[0].strip()
+        if sent_photo and last.startswith("(사진만 보냄)"):
+            last = ""
         seed = _seed(philosopher["id"], last, str(len(messages)))
         self._sleep(seed)
         mock = philosopher["mock"]
-        recent = " ".join(m["content"] for m in messages[-6:] if m["role"] == "assistant")
+        recent = " ".join(_text_of(m["content"]) for m in messages[-6:] if m["role"] == "assistant")
         fresh_questions = [q for q in mock["questions"] if q not in recent] or mock["questions"]
         question = _pick(fresh_questions, seed, 2)
         fresh_reframes = [r for r in mock["reframes"] if r not in recent] or mock["reframes"]
@@ -202,6 +221,8 @@ class MockProvider(AIProvider):
                 lead = AUTHORITY_LEAD
             elif decision:
                 lead = DECISION_LEAD
+            elif sent_photo:
+                lead = PHOTO_LEAD  # the mock cannot read images; just acknowledge them
             else:
                 fresh_empathy = [e for e in mock["empathy"] if e not in recent] or mock["empathy"]
                 lead = _pick(fresh_empathy, seed)
@@ -228,6 +249,14 @@ class MockProvider(AIProvider):
         return AIReply(text=text, provider=self.name, model=self.model,
                        usage=AIUsage(), stop_reason="end_turn",
                        title=mock_title(user_turns[0]) if want_title and user_turns else None)
+
+    def read_images(self, *, system, images, max_tokens):
+        """Stand-in for the vision model: mock mode never reads the photos."""
+        lines = []
+        for n, parts in enumerate(images, 1):
+            lines.append(f"[사진 {n} · 사진]")
+            lines.append("(mock 모드에서는 사진 내용을 읽지 않아요)")
+        return ImageReading(text="\n".join(lines), provider=self.name, model=self.model)
 
     def summarize(self, *, system, prompt, philosopher, old_summary, old_memory,
                   transcript, max_tokens):

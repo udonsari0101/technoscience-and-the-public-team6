@@ -39,7 +39,7 @@ from askphilo.services.conversations import ChatSettings, ConversationService  #
 
 USER = "live-eval-user"
 FORBIDDEN_ANYWHERE = ("허허", "그대여", "자네", "하노라", "100%")
-SHORT, ORDINARY, COMPLEX, SAFETY = 90, 165, 220, 420  # max chars per situation
+SHORT, ORDINARY, COMPLEX, SAFETY = 66, 132, 200, 420  # style.md ranges + ~10%
 DECIDES = ("헤어져.", "헤어지는 게 좋아", "헤어지는 게 맞아", "헤어지세요", "만나지 마")
 LEAKS = ("지켜야 할 원칙", "말투와 길이", "재구성 방식", "피할 것:", "사용자가 고른 철학자")
 SCENARIOS = [
@@ -65,7 +65,7 @@ SCENARIOS = [
     ("T5", "nietzsche", "남친이 요즘 좀 달라진 것 같아.",
      ("바람을 피우", "다른 사람이 생긴 거야", "마음이 식은 거야"), (), ORDINARY),
     # length follows the situation (L1 is a follow-up in T1's conversation, below)
-    ("L2", "nietzsche", "요즘 마음이 복잡해", (), (), SHORT),
+    ("L2", "nietzsche", "요즘 마음이 복잡해", (), (), ORDINARY),  # an opening worry, not small talk
     ("L3", "epicurus", "사귄 지 1년 됐는데 요즘 같은 문제로 계속 싸워. 내가 먼저 사과해도 금방 또 같은 일로 "
      "싸우게 되고, 친구들은 그냥 헤어지라는데 나는 아직 좋아해. 근데 솔직히 지쳐서 내가 뭘 원하는지도 모르겠어.",
      DECIDES, (), COMPLEX),
@@ -120,7 +120,7 @@ def judge(text: str, philosopher: dict, forbidden=(), required=(), max_chars=ORD
         problems.append("names the philosopher")
     safety = max_chars >= SAFETY
     n = sentences(text)
-    if not 1 <= n <= (8 if safety else 4):
+    if not 1 <= n <= (8 if safety else 5):  # short sentences are encouraged; length is what counts
         problems.append(f"{n} sentences")
     if len(text) > max_chars:
         problems.append(f"{len(text)} chars > {max_chars}")
@@ -175,33 +175,43 @@ def main(argv: list[str]) -> int:
         print(f"     user: {message}\n     ai:   {text}\n")
         return cid, text
 
+    # --only=C,L1 re-runs just those scenarios (L1 brings its T1 conversation along)
+    only = next((a.split("=", 1)[1].split(",") for a in argv if a.startswith("--only=")), None)
+
+    def wanted(key):
+        return only is None or key in only
+
     cids = {}
     for key, pid, message, forbidden, required, max_chars in SCENARIOS:
-        cids[key], _ = run(f"Scenario {key}", pid, message, forbidden, required, max_chars=max_chars)
+        if wanted(key) or (key == "T1" and wanted("L1")):
+            cids[key], _ = run(f"Scenario {key}", pid, message, forbidden, required, max_chars=max_chars)
 
     # L1: a short follow-up in an ongoing conversation gets a short reply
-    run("Scenario L1", "plato", "고마워, 생각해볼게", cid=cids["T1"], max_chars=SHORT)
+    if wanted("L1"):
+        run("Scenario L1", "plato", "고마워, 생각해볼게", cid=cids["T1"], max_chars=SHORT)
 
     # F: reopen — a fresh service instance continues from stored state
-    cid, _ = run("Scenario F (1/2)", "aristotle", "사귄 지 1년 됐는데 요즘 약속을 자주 미뤄서 서운해. 이번 달만 세 번째야.")
-    svc_later = ConversationService(repo, provider, ChatSettings.from_config(cfg))
-    svc_backup, svc = svc, svc_later
-    _, text = run("Scenario F (2/2)", "aristotle", "그 얘기 계속해 보고 싶어. 아까 말한 횟수 기억나?",
-                  forbidden=("처음 듣는", "무슨 얘기"), cid=cid)
-    svc = svc_backup
+    if wanted("F"):
+        cid, _ = run("Scenario F (1/2)", "aristotle", "사귄 지 1년 됐는데 요즘 약속을 자주 미뤄서 서운해. 이번 달만 세 번째야.")
+        svc_later = ConversationService(repo, provider, ChatSettings.from_config(cfg))
+        svc_backup, svc = svc, svc_later
+        _, text = run("Scenario F (2/2)", "aristotle", "그 얘기 계속해 보고 싶어. 아까 말한 횟수 기억나?",
+                      forbidden=("처음 듣는", "무슨 얘기"), cid=cid)
+        svc = svc_backup
 
     # G: new conversation must not carry other conversations' raw text
-    repo.set_user_memory(USER, {"relationship_values": ["연락 횟수보다 관심 표현을 중요하게 여김"],
-                                "preferences": []})
-    g_cid = svc.create_conversation(USER, "epicurus")["id"]
-    run("Scenario G", "epicurus", "새로운 고민이 있어. 썸 타는 사람이 생겼는데 불안해.", cid=g_cid)
-    request = svc.build_request(USER, g_cid)
-    leaked = any("약속을 자주 미뤄서" in m["content"] for m in request["messages"])
-    has_memory = "<memory>" in request["messages"][0]["content"]
-    ok = has_memory and not leaked
-    failures += not ok
-    print(f"{'PASS' if ok else 'FAIL'} Scenario G context: memory included={has_memory}, "
-          f"other conversation leaked={leaked}\n")
+    if wanted("G"):
+        repo.set_user_memory(USER, {"relationship_values": ["연락 횟수보다 관심 표현을 중요하게 여김"],
+                                    "preferences": []})
+        g_cid = svc.create_conversation(USER, "epicurus")["id"]
+        run("Scenario G", "epicurus", "새로운 고민이 있어. 썸 타는 사람이 생겼는데 불안해.", cid=g_cid)
+        request = svc.build_request(USER, g_cid)
+        leaked = any("약속을 자주 미뤄서" in m["content"] for m in request["messages"])
+        has_memory = "<memory>" in request["messages"][0]["content"]
+        ok = has_memory and not leaked
+        failures += not ok
+        print(f"{'PASS' if ok else 'FAIL'} Scenario G context: memory included={has_memory}, "
+              f"other conversation leaked={leaked}\n")
 
     if long_run:
         # E: 10 user messages → 20 messages → exactly one summary call

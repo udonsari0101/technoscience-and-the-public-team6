@@ -22,13 +22,17 @@ from .base import (
     UsernameTaken,
     keeps_user_title,
     message_doc_id,
-    preview,
+    message_preview,
     utcnow,
 )
 
 log = logging.getLogger("askphilo.firestore")
 
 FIREBASE_APP_NAME = "askphilo"
+# Image fields read when the data itself isn't needed.
+IMAGE_META_FIELDS = ["upload_id", "part", "width", "height", "conversation_id", "message_index",
+                     "created_at", "mime"]
+
 # Fields the admin dashboard may read (no password data).
 USER_PUBLIC = ['name', 'username', 'username_normalized', 'role', 'created_at', 'updated_at', 'last_login_at', 'daily_usage', 'schema_version']
 
@@ -177,6 +181,48 @@ class FirestoreRepository(Repository):
         snap = self.client.collection("usage_totals").document(key).get(timeout=20)
         return snap.to_dict() or {} if snap.exists else {}
 
+    # ---- image attachments (one ≤ ~1 MB base64 document per part) --------------------
+    def _images(self, user_id):
+        return self._user_ref(user_id).collection("images")
+
+    @_guard
+    def put_image(self, user_id, image_id, doc):
+        self._images(user_id).document(image_id).set(doc, timeout=30)
+
+    @_guard
+    def get_images(self, user_id, image_ids, *, with_data=True):
+        if not image_ids:
+            return {}
+        refs = [self._images(user_id).document(i) for i in image_ids]
+        kwargs = {} if with_data else {"field_paths": IMAGE_META_FIELDS}
+        snaps = self.client.get_all(refs, timeout=30, **kwargs)
+        return {s.id: s.to_dict() for s in snaps if s.exists}
+
+    @_guard
+    def attach_images(self, user_id, image_ids, conversation_id, message_index):
+        batch = self.client.batch()
+        for image_id in image_ids:
+            batch.update(self._images(user_id).document(image_id),
+                         {"conversation_id": conversation_id, "message_index": message_index})
+        batch.commit(timeout=30)
+
+    @_guard
+    def delete_images(self, user_id, image_ids):
+        for start in range(0, len(image_ids), 400):
+            batch = self.client.batch()
+            for image_id in image_ids[start:start + 400]:
+                batch.delete(self._images(user_id).document(image_id))
+            batch.commit(timeout=30)
+
+    @_guard
+    def find_images(self, user_id, conversation_id):
+        from google.cloud.firestore_v1.base_query import FieldFilter
+
+        query = (self._images(user_id)
+                 .where(filter=FieldFilter("conversation_id", "==", conversation_id))
+                 .select(["created_at"]))  # never download the image data here
+        return {s.id: (s.to_dict() or {}).get("created_at") for s in query.stream(timeout=30)}
+
     # ---- billing settings (admin) ----------------------------------------------------
     @_guard
     def get_billing_settings(self):
@@ -213,11 +259,43 @@ class FirestoreRepository(Repository):
         from google.cloud import firestore as gcf
         from google.cloud.firestore_v1.base_query import FieldFilter
 
-        query = self._user_ref(user_id).collection("conversations")
-        if before is not None:
-            query = query.where(filter=FieldFilter("updated_at", "<", before))
-        query = query.order_by("updated_at", direction=gcf.Query.DESCENDING).limit(limit)
+        # Trashed conversations are skipped here rather than filtered in the
+        # query, which would need a composite index; read in pages until enough.
+        col = self._user_ref(user_id).collection("conversations")
+        out, cursor, page = [], before, max(limit * 2, 10)
+        while len(out) < limit:
+            query = col
+            if cursor is not None:
+                query = query.where(filter=FieldFilter("updated_at", "<", cursor))
+            snaps = list(query.order_by("updated_at", direction=gcf.Query.DESCENDING)
+                         .limit(page).stream(timeout=20))
+            for s in snaps:
+                doc = s.to_dict()
+                if not doc.get("deleted_at"):
+                    out.append({"id": s.id, **doc})
+            if len(snaps) < page:
+                break
+            cursor = snaps[-1].to_dict()["updated_at"]
+        return out[:limit]
+
+    @_guard
+    def list_trash(self, user_id, limit=100):
+        from google.cloud import firestore as gcf
+
+        # order_by skips documents without the field: only trashed ones have it.
+        query = (self._user_ref(user_id).collection("conversations")
+                 .order_by("deleted_at", direction=gcf.Query.DESCENDING).limit(limit))
         return [{"id": s.id, **s.to_dict()} for s in query.stream(timeout=20)]
+
+    @_guard
+    def trash_conversation(self, user_id, conversation_id, when):
+        self._conv_ref(user_id, conversation_id).update({"deleted_at": when}, timeout=15)
+
+    @_guard
+    def restore_conversation(self, user_id, conversation_id):
+        from google.cloud import firestore as gcf
+
+        self._conv_ref(user_id, conversation_id).update({"deleted_at": gcf.DELETE_FIELD}, timeout=15)
 
     @_guard
     def delete_conversation(self, user_id, conversation_id):
@@ -226,6 +304,7 @@ class FirestoreRepository(Repository):
             return False
         # Deletes the messages subcollection and then the document itself.
         self.client.recursive_delete(ref)
+        self.delete_images(user_id, list(self.find_images(user_id, conversation_id)))
         return True
 
     # ---- messages ------------------------------------------------------------------
@@ -259,7 +338,7 @@ class FirestoreRepository(Repository):
             updates = {
                 "message_count": index,
                 "updated_at": now,
-                "last_message_preview": preview(last["content"]),
+                "last_message_preview": message_preview(last),
                 "last_message_role": last["role"],
             }
             requested = conversation_updates or {}
@@ -351,7 +430,7 @@ class FirestoreRepository(Repository):
 
     # ---- daily question allowance ------------------------------------------------------
     @_guard
-    def reserve_daily_message(self, user_id, day, limit):
+    def reserve_daily_message(self, user_id, day, limit, count=1):
         from google.cloud import firestore as gcf
 
         user_ref = self._user_ref(user_id)
@@ -362,16 +441,16 @@ class FirestoreRepository(Repository):
             if not snap.exists:
                 return None
             usage = (snap.to_dict() or {}).get("daily_usage") or {}
-            count = usage.get("count", 0) if usage.get("date") == day else 0
-            if count >= limit:
+            used = usage.get("count", 0) if usage.get("date") == day else 0
+            if used + count > limit:
                 return None
-            transaction.update(user_ref, {"daily_usage": {"date": day, "count": count + 1}})
-            return count + 1
+            transaction.update(user_ref, {"daily_usage": {"date": day, "count": used + count}})
+            return used + count
 
         return _txn(self.client.transaction())
 
     @_guard
-    def refund_daily_message(self, user_id, day):
+    def refund_daily_message(self, user_id, day, count=1):
         from google.cloud import firestore as gcf
 
         user_ref = self._user_ref(user_id)
@@ -381,7 +460,8 @@ class FirestoreRepository(Repository):
             snap = user_ref.get(transaction=transaction)
             usage = ((snap.to_dict() or {}) if snap.exists else {}).get("daily_usage") or {}
             if usage.get("date") == day and usage.get("count", 0) > 0:
-                transaction.update(user_ref, {"daily_usage": {"date": day, "count": usage["count"] - 1}})
+                transaction.update(user_ref, {"daily_usage": {
+                    "date": day, "count": max(0, usage["count"] - count)}})
 
         _txn(self.client.transaction())
 

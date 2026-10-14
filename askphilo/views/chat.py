@@ -19,6 +19,7 @@ from flask import (
 
 from .. import background
 from ..ai import get_provider
+from ..services import images as image_files
 from ..auth import login_required
 from ..data import get_repository
 from ..philosophers import PHILOSOPHERS, get_philosopher, philosopher_css
@@ -38,6 +39,7 @@ CHAT_PAGE_SIZE = 30
 SIDEBAR_SIZE = 20
 MSG_SLOW_DOWN = "메시지를 너무 빠르게 보내고 있어요. 잠시 후 다시 시도해 주세요."
 MSG_BUSY = "지금은 이용자가 많아요. 잠시 후 다시 시도해 주세요."
+UPLOADS_PER_10_MIN = 40
 
 
 def service() -> ConversationService:
@@ -192,6 +194,7 @@ def rename(conversation_id):
 @bp.route("/c/<conversation_id>/delete", methods=["GET", "POST"])
 @login_required
 def delete(conversation_id):
+    """Move to the trash (restorable); permanent deletion happens in the trash."""
     svc = service()
     try:
         conv = svc.get(g.user["uid"], conversation_id)
@@ -199,10 +202,48 @@ def delete(conversation_id):
         abort(404)
     if request.method == "GET":
         return render_template("delete_confirm.html", conversation=conv)
-    svc.delete(g.user["uid"], conversation_id)
-    log.info("conversation deleted conv=%s", conversation_id)
-    flash("대화를 삭제했어요.", "success")
+    svc.trash(g.user["uid"], conversation_id)
+    log.info("conversation trashed conv=%s", conversation_id)
+    flash("휴지통으로 옮겼어요.", "success")
     return redirect(url_for("chat.history"))
+
+
+@bp.get("/trash")
+@login_required
+def trash():
+    items = service().trash_items(g.user["uid"])
+    return render_template("trash.html", conversations=items)
+
+
+@bp.post("/trash/<conversation_id>/restore")
+@login_required
+def restore(conversation_id):
+    try:
+        service().restore(g.user["uid"], conversation_id)
+    except ChatError:
+        abort(404)
+    flash("대화를 되살렸어요.", "success")
+    return redirect(url_for("chat.conversation", conversation_id=conversation_id))
+
+
+@bp.post("/trash/<conversation_id>/delete")
+@login_required
+def delete_forever(conversation_id):
+    try:
+        service().delete_forever(g.user["uid"], conversation_id)
+    except ChatError:
+        abort(404)
+    log.info("conversation deleted conv=%s", conversation_id)
+    flash("영구 삭제했어요.", "success")
+    return redirect(url_for("chat.trash"))
+
+
+@bp.post("/trash/empty")
+@login_required
+def empty_trash():
+    count = service().empty_trash(g.user["uid"])
+    flash(f"휴지통을 비웠어요 ({count}개)." if count else "휴지통이 비어 있어요.", "success")
+    return redirect(url_for("chat.trash"))
 
 
 # ---------------------------------------------------------------------------
@@ -216,7 +257,8 @@ def api_create():
     svc = service()
     philosopher_id = str(data.get("philosopher_id", ""))
     try:
-        content = svc.validate(data.get("content"))
+        image_ids = svc.check_images(data.get("image_ids"))
+        content = svc.validate(data.get("content"), allow_empty=bool(image_ids))
         if get_philosopher(philosopher_id) is None:
             raise ChatError("bad_philosopher", "철학자를 다시 선택해 주세요.", 400)
     except ChatError as exc:
@@ -226,7 +268,7 @@ def api_create():
         return blocked
     try:
         conv = svc.create_conversation(g.user["uid"], philosopher_id)
-        result = svc.send(g.user["uid"], conv["id"], content)
+        result = svc.send(g.user["uid"], conv["id"], content, image_ids)
     except ChatError as exc:
         return _error(exc)
     if result["summary_due"]:
@@ -241,7 +283,8 @@ def api_send(conversation_id):
     data = _payload()
     svc = service()
     try:
-        content = svc.validate(data.get("content"))
+        image_ids = svc.check_images(data.get("image_ids"))
+        content = svc.validate(data.get("content"), allow_empty=bool(image_ids))
         svc.get(g.user["uid"], conversation_id)
     except ChatError as exc:
         return _error(exc)
@@ -249,7 +292,7 @@ def api_send(conversation_id):
     if blocked:
         return blocked
     try:
-        result = svc.send(g.user["uid"], conversation_id, content)
+        result = svc.send(g.user["uid"], conversation_id, content, image_ids)
     except ChatError as exc:
         return _error(exc)
     if result["summary_due"]:
@@ -275,6 +318,51 @@ def api_retry(conversation_id):
     if result["summary_due"]:
         _schedule_summary(svc, g.user["uid"], conversation_id)
     return jsonify(ok=True, **result)
+
+
+@bp.post("/api/uploads")
+@login_required
+def api_upload():
+    """One photo per request (≤ 100 MB): shrunk, stored as base64, then waits for a message."""
+    request.max_content_length = image_files.MAX_UPLOAD_BYTES + 64 * 1024  # + multipart framing
+    limiter = get_limiter()
+    key = f"upload:{g.user['uid']}"
+    if not limiter.allowed(key, UPLOADS_PER_10_MIN, 600):
+        return jsonify(ok=False, error="rate_limited", message=MSG_SLOW_DOWN), 429
+    upload = request.files.get("image")
+    if upload is None or not upload.filename:
+        return jsonify(ok=False, error="not_image", message=image_files.MSG_NOT_IMAGE), 400
+    limiter.record(key, 600)
+    try:
+        staged = service().stage_upload(g.user["uid"], upload.stream)
+    except image_files.ImageError as exc:
+        return jsonify(ok=False, error=exc.code, message=exc.message), 400
+    except ChatError as exc:
+        return _error(exc)
+    return jsonify(ok=True, upload=staged), 201
+
+
+@bp.post("/api/uploads/<upload_id>/discard")
+@login_required
+def api_discard_upload(upload_id):
+    try:
+        service().discard_upload(g.user["uid"], upload_id)
+    except ChatError as exc:
+        return _error(exc)
+    return jsonify(ok=True)
+
+
+@bp.get("/images/<image_id>")
+@login_required
+def image(image_id):
+    """A photo part, decoded from its base64 copy in Firestore (owner only)."""
+    found = service().image(g.user["uid"], image_id)
+    if found is None:
+        abort(404)
+    data, mime = found
+    response = Response(data, mimetype=mime)
+    response.headers["Cache-Control"] = "private, max-age=31536000, immutable"
+    return response
 
 
 @bp.get("/api/conversations/<conversation_id>/messages")

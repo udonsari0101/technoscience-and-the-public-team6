@@ -19,7 +19,7 @@ from .base import (
     UsernameTaken,
     keeps_user_title,
     message_doc_id,
-    preview,
+    message_preview,
     utcnow,
 )
 
@@ -40,6 +40,7 @@ class MemoryRepository(Repository):
         self.memory: dict[str, dict] = {}
         self.usage_days: dict[str, dict] = {}
         self.usage_totals: dict[str, dict] = {}
+        self.user_images: dict[str, dict[str, dict]] = {}
         self.billing: dict = {}
 
     # ---- users -----------------------------------------------------------
@@ -138,16 +139,71 @@ class MemoryRepository(Repository):
             items = [
                 {"id": cid, **copy.deepcopy(doc)}
                 for cid, doc in self.conversations.get(user_id, {}).items()
-                if before is None or doc["updated_at"] < before
+                if (before is None or doc["updated_at"] < before) and not doc.get("deleted_at")
             ]
         items.sort(key=lambda c: c["updated_at"], reverse=True)
         return items[:limit]
+
+    def list_trash(self, user_id, limit=100):
+        with self._lock:
+            items = [{"id": cid, **copy.deepcopy(doc)}
+                     for cid, doc in self.conversations.get(user_id, {}).items() if doc.get("deleted_at")]
+        items.sort(key=lambda c: c["deleted_at"], reverse=True)
+        return items[:limit]
+
+    def trash_conversation(self, user_id, conversation_id, when):
+        with self._lock:
+            conv = self.conversations.get(user_id, {}).get(conversation_id)
+            if conv is None:
+                raise NotFound(conversation_id)
+            conv["deleted_at"] = when
+
+    def restore_conversation(self, user_id, conversation_id):
+        with self._lock:
+            conv = self.conversations.get(user_id, {}).get(conversation_id)
+            if conv is None:
+                raise NotFound(conversation_id)
+            conv.pop("deleted_at", None)
 
     def delete_conversation(self, user_id, conversation_id):
         with self._lock:
             existed = self.conversations.get(user_id, {}).pop(conversation_id, None)
             self.messages.pop((user_id, conversation_id), None)
+            images = self.user_images.get(user_id, {})
+            for image_id in [i for i, d in images.items() if d.get("conversation_id") == conversation_id]:
+                images.pop(image_id)
             return existed is not None
+
+    # ---- images ----------------------------------------------------------
+    def put_image(self, user_id, image_id, doc):
+        with self._lock:
+            self.user_images.setdefault(user_id, {})[image_id] = copy.deepcopy(doc)
+
+    def get_images(self, user_id, image_ids, *, with_data=True):
+        with self._lock:
+            stored = self.user_images.get(user_id, {})
+            out = {i: copy.deepcopy(stored[i]) for i in image_ids if i in stored}
+        if not with_data:
+            for doc in out.values():
+                doc.pop("data_b64", None)
+        return out
+
+    def attach_images(self, user_id, image_ids, conversation_id, message_index):
+        with self._lock:
+            for image_id in image_ids:
+                doc = self.user_images.get(user_id, {}).get(image_id)
+                if doc is not None:
+                    doc.update(conversation_id=conversation_id, message_index=message_index)
+
+    def delete_images(self, user_id, image_ids):
+        with self._lock:
+            for image_id in image_ids:
+                self.user_images.get(user_id, {}).pop(image_id, None)
+
+    def find_images(self, user_id, conversation_id):
+        with self._lock:
+            return {i: d.get("created_at") for i, d in self.user_images.get(user_id, {}).items()
+                    if d.get("conversation_id") == conversation_id}
 
     # ---- messages --------------------------------------------------------
     def append_messages(self, user_id, conversation_id, messages, *,
@@ -172,7 +228,7 @@ class MemoryRepository(Repository):
             last = messages[-1]
             conv["message_count"] = index
             conv["updated_at"] = now
-            conv["last_message_preview"] = preview(last["content"])
+            conv["last_message_preview"] = message_preview(last)
             conv["last_message_role"] = last["role"]
             updates = conversation_updates or {}
             for key, value in updates.items():
@@ -237,24 +293,24 @@ class MemoryRepository(Repository):
                 usage[key] = usage.get(key, 0) + value
 
     # ---- daily question allowance ------------------------------------------
-    def reserve_daily_message(self, user_id, day, limit):
+    def reserve_daily_message(self, user_id, day, limit, count=1):
         with self._lock:
             user = self.users.get(user_id)
             if user is None:
                 return None
             usage = user.get("daily_usage") or {}
-            count = usage.get("count", 0) if usage.get("date") == day else 0
-            if count >= limit:
+            used = usage.get("count", 0) if usage.get("date") == day else 0
+            if used + count > limit:
                 return None
-            user["daily_usage"] = {"date": day, "count": count + 1}
-            return count + 1
+            user["daily_usage"] = {"date": day, "count": used + count}
+            return used + count
 
-    def refund_daily_message(self, user_id, day):
+    def refund_daily_message(self, user_id, day, count=1):
         with self._lock:
             user = self.users.get(user_id)
             usage = (user or {}).get("daily_usage") or {}
             if usage.get("date") == day and usage.get("count", 0) > 0:
-                user["daily_usage"] = {"date": day, "count": usage["count"] - 1}
+                user["daily_usage"] = {"date": day, "count": max(0, usage["count"] - count)}
 
     def get_daily_usage(self, user_id, day):
         with self._lock:

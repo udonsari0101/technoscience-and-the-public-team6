@@ -111,6 +111,33 @@ def main() -> int:
         listed_users = step("list_users", lambda: repo.list_users(500))
         mine = next(u for u in listed_users if u["id"] == user_id)
         assert "password_hash" not in mine and mine["daily_usage"]["count"] == 1
+        # several questions at once (photos use one each)
+        assert repo.reserve_daily_message(user_id, "2000-01-02", 5, 4) == 4
+        assert repo.reserve_daily_message(user_id, "2000-01-02", 5, 2) is None
+        repo.refund_daily_message(user_id, "2000-01-02", 4)
+        assert repo.get_daily_usage(user_id, "2000-01-02") == 0
+        # photos: staged (conversation_id null) → attached → deleted with the conversation
+        up = uuid.uuid4().hex
+        for n in range(2):
+            step(f"put_image {n}", lambda n=n: repo.put_image(user_id, f"{up}-{n}", {
+                "data_b64": "QUJD" * 1000, "mime": "image/jpeg", "width": 10, "height": 10, "bytes": 3000,
+                "upload_id": up, "part": n, "conversation_id": None, "message_index": None,
+                "created_at": utcnow()}))
+        pending = step("find_images(None)", lambda: repo.find_images(user_id, None))
+        assert set(pending) == {f"{up}-0", f"{up}-1"}, pending
+        meta = step("get_images(meta only)", lambda: repo.get_images(user_id, [f"{up}-0"], with_data=False))
+        assert "data_b64" not in meta[f"{up}-0"] and meta[f"{up}-0"]["upload_id"] == up, meta
+        step("attach_images", lambda: repo.attach_images(user_id, [f"{up}-0", f"{up}-1"], conv_id, 2))
+        assert set(repo.find_images(user_id, conv_id)) == {f"{up}-0", f"{up}-1"}
+        assert repo.find_images(user_id, None) == {}
+        assert repo.get_images(user_id, [f"{up}-1"])[f"{up}-1"]["data_b64"].startswith("QUJD")
+        # trash: left out of the list, shown in the trash, restorable
+        step("trash_conversation", lambda: repo.trash_conversation(user_id, conv_id, utcnow()))
+        assert all(c["id"] != conv_id for c in repo.list_conversations(user_id, limit=5))
+        trash = step("list_trash", lambda: repo.list_trash(user_id))
+        assert [c["id"] for c in trash] == [conv_id], trash
+        step("restore_conversation", lambda: repo.restore_conversation(user_id, conv_id))
+        assert repo.list_trash(user_id) == [] and "deleted_at" not in repo.get_conversation(user_id, conv_id)
         step("set_user_memory", lambda: repo.set_user_memory(user_id, {"preferences": ["짧은 답변"]}))
         assert repo.get_user_memory(user_id)["preferences"] == ["짧은 답변"]
         step("delete_user_memory", lambda: repo.delete_user_memory(user_id))
@@ -118,6 +145,7 @@ def main() -> int:
         deleted = step("delete_conversation", lambda: repo.delete_conversation(user_id, conv_id))
         assert deleted and repo.get_conversation(user_id, conv_id) is None
         assert repo.get_messages(user_id, conv_id) == []
+        assert repo.find_images(user_id, conv_id) == {}  # photos went with it
         print("ALL CHECKS PASSED")
         return_code = 0
     except Exception as exc:  # noqa: BLE001

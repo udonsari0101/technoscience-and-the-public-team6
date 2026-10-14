@@ -67,6 +67,11 @@ def preview(text: str, limit: int = 60) -> str:
     return flat if len(flat) <= limit else flat[: limit - 1].rstrip() + "…"
 
 
+def message_preview(message: dict) -> str:
+    """List preview of a message; a photo-only message reads "사진"."""
+    return preview(message.get("content")) or ("사진" if message.get("images") else "")
+
+
 class Repository:
     """Abstract storage API. See firestore_repo / memory_repo."""
 
@@ -108,6 +113,26 @@ class Repository:
         """Running totals since usage was first recorded ({} if none)."""
         raise NotImplementedError
 
+    # ---- image attachments (users/{uid}/images/{part_id}, base64 JPEG) --------
+    # Uploaded parts wait with conversation_id None until a message uses them.
+    def put_image(self, user_id: str, image_id: str, doc: dict) -> None:
+        raise NotImplementedError
+
+    def get_images(self, user_id: str, image_ids: list[str], *, with_data: bool = True) -> dict[str, dict]:
+        """{image_id: doc} for the ids that exist (without data_b64 if with_data=False)."""
+        raise NotImplementedError
+
+    def attach_images(self, user_id: str, image_ids: list[str], conversation_id: str,
+                      message_index: int) -> None:
+        raise NotImplementedError
+
+    def delete_images(self, user_id: str, image_ids: list[str]) -> None:
+        raise NotImplementedError
+
+    def find_images(self, user_id: str, conversation_id: str | None) -> dict[str, datetime | None]:
+        """{image_id: created_at} of a conversation's images (None: unattached uploads)."""
+        raise NotImplementedError
+
     # ---- billing settings (admin) ------------------------------------------
     def get_billing_settings(self) -> dict:
         """settings/billing: {"credit_usd", "outside_spend_usd", ...} ({} if unset)."""
@@ -130,11 +155,21 @@ class Repository:
 
     def list_conversations(self, user_id: str, limit: int = 20,
                            before: datetime | None = None) -> list[dict]:
-        """Newest first (updated_at desc)."""
+        """Newest first (updated_at desc), conversations in the trash left out."""
+        raise NotImplementedError
+
+    def list_trash(self, user_id: str, limit: int = 100) -> list[dict]:
+        """Conversations in the trash, most recently trashed first."""
+        raise NotImplementedError
+
+    def trash_conversation(self, user_id: str, conversation_id: str, when: datetime) -> None:
+        raise NotImplementedError
+
+    def restore_conversation(self, user_id: str, conversation_id: str) -> None:
         raise NotImplementedError
 
     def delete_conversation(self, user_id: str, conversation_id: str) -> bool:
-        """Delete the conversation and its messages subcollection."""
+        """Permanently delete the conversation, its messages and its images."""
         raise NotImplementedError
 
     # ---- messages ----------------------------------------------------------
@@ -186,13 +221,13 @@ class Repository:
         raise NotImplementedError
 
     # ---- daily question allowance ---------------------------------------
-    def reserve_daily_message(self, user_id: str, day: str, limit: int) -> int | None:
-        """Atomically use one question of `day`. Returns the new count, or
-        None (and changes nothing) when `limit` is already reached."""
+    def reserve_daily_message(self, user_id: str, day: str, limit: int, count: int = 1) -> int | None:
+        """Atomically use `count` questions of `day`. Returns the new total, or
+        None (and changes nothing) when that would go over `limit`."""
         raise NotImplementedError
 
-    def refund_daily_message(self, user_id: str, day: str) -> None:
-        """Give back one reserved question (no-op on another day)."""
+    def refund_daily_message(self, user_id: str, day: str, count: int = 1) -> None:
+        """Give back reserved questions (no-op on another day)."""
         raise NotImplementedError
 
     def get_daily_usage(self, user_id: str, day: str) -> int:

@@ -14,7 +14,7 @@ log = logging.getLogger("askphilo")
 
 CSP = (
     "default-src 'self'; "
-    "img-src 'self' data:; "
+    "img-src 'self' data: blob:; "  # blob: previews of photos being uploaded
     "style-src 'self'; "
     "script-src 'self'; "
     "font-src 'self'; "
@@ -107,6 +107,8 @@ def init_security(app: Flask) -> None:
 
     @app.errorhandler(413)
     def _too_large(_exc):
+        if request.path.startswith("/api/uploads"):
+            return jsonify(error="too_large", message="사진은 한 장에 100MB까지 보낼 수 있어요."), 413
         if _is_api():
             return jsonify(error="too_large", message="메시지가 너무 길어요."), 413
         return render_template("error.html", code=413, message="요청이 너무 커요."), 413

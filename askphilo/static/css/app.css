@@ -1595,8 +1595,8 @@ html.kb-open .chat-layout {
   margin: 0 auto;
   display: flex;
   align-items: flex-end;
-  gap: 8px;
-  padding: 6px 6px 6px 16px;
+  gap: 4px;
+  padding: 6px 6px 6px 4px;
   border: 1.5px solid var(--border);
   border-radius: 24px;
   background: var(--surface);
@@ -1869,4 +1869,200 @@ html.kb-open .chat-layout {
   :root:not([data-theme="light"]) .segmented input:checked + span {
     background: var(--surface-3);
   }
+}
+
+/* ==========================================================================
+   Photos: attach button, waiting strip above the composer, photos in messages
+   ========================================================================== */
+.attach-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: background-color 0.15s var(--ease), color 0.15s var(--ease);
+}
+.attach-btn:hover {
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+.composer-inner:has(#attach-input:focus-visible) .attach-btn {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.attach-strip {
+  max-width: 720px;
+  margin: 0 auto 8px;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 6px 2px 2px;
+  -webkit-overflow-scrolling: touch;
+}
+.attach-strip.is-sending {
+  opacity: 0.55;
+  pointer-events: none;
+}
+.attach-item {
+  position: relative;
+  flex: none;
+  width: 64px;
+  height: 64px;
+  border-radius: 14px;
+  background: var(--surface-2);
+  box-shadow: var(--shadow-sm);
+}
+.attach-item img {
+  width: 100%;
+  height: 100%;
+  border-radius: 14px;
+  object-fit: cover;
+}
+.attach-item.is-uploading img {
+  opacity: 0.55;
+}
+.attach-progress {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.6);
+  overflow: hidden;
+}
+.attach-item:not(.is-uploading) .attach-progress {
+  display: none;
+}
+.attach-progress span {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: var(--primary-fill);
+  transition: width 0.2s linear;
+}
+.attach-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--text);
+  color: var(--bg);
+  box-shadow: var(--shadow-sm);
+}
+.attach-remove::before {
+  /* 44px touch target around the small visible button */
+  content: "";
+  position: absolute;
+  inset: -9px;
+}
+.attach-remove .icon {
+  width: 14px;
+  height: 14px;
+}
+.attach-error {
+  max-width: 720px;
+  margin: 0 auto 8px;
+  color: var(--danger);
+  font-size: 13px;
+  font-weight: 600;
+}
+.attach-cost {
+  margin-left: 4px;
+}
+
+.msg-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  max-width: min(78%, 360px);
+}
+.msg-body .bubble {
+  max-width: 100%;
+}
+.msg-photos {
+  display: grid;
+  width: 100%;
+  gap: 4px;
+}
+.msg-photos.is-grid {
+  grid-template-columns: 1fr 1fr;
+}
+.msg-photo {
+  display: block;
+  overflow: hidden;
+  border-radius: 16px;
+  background: var(--surface-2);
+}
+.msg-photo img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 320px;
+  object-fit: cover;
+  object-position: top;
+}
+.msg-photos.is-grid .msg-photo img {
+  aspect-ratio: 1;
+  height: 100%;
+}
+
+.photo-viewer {
+  width: min(96vw, 720px);
+  max-height: 92dvh;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: #000;
+  overflow: hidden;
+}
+.photo-viewer::backdrop {
+  background: rgba(0, 0, 0, 0.75);
+}
+.photo-viewer-body {
+  max-height: 92dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.photo-viewer-body img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.photo-viewer-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+}
+.photo-viewer-close:hover {
+  background: rgba(0, 0, 0, 0.75);
+}
+
+/* Trash */
+.trash-note {
+  margin: 4px 2px 10px;
+  font-size: 13px;
+}
+.conv-static {
+  cursor: default;
+}
+.conv-static:hover,
+.conv-static:active {
+  background: none;
+}
+.trash-item form {
+  margin: 0;
 }

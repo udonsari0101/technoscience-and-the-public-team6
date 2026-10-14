@@ -152,7 +152,7 @@ def test_reopen_conversation_page(logged_in, counting):
     html = logged_in.get(f"/c/{cid}").get_data(as_text=True)
     assert "주말에도 연락이 거의 없었어" in html
     assert f'data-conversation-id="{cid}"' in html
-    assert "대화 삭제" in html
+    assert "휴지통으로 이동" in html
     assert len(counting.reply_calls) == 2  # reopening made no AI call
 
 
@@ -177,13 +177,13 @@ def test_history_and_home_list_conversations(logged_in, counting):
 
 def test_delete_conversation_and_messages(logged_in, repo, counting):
     cid = create(logged_in).get_json()["conversation_id"]
-    page = logged_in.get(f"/c/{cid}/delete").get_data(as_text=True)
-    assert "이 대화를 삭제할까요?" in page and "삭제한 대화는 다시 볼 수 없어요." in page
-    res = logged_in.post(f"/c/{cid}/delete", data={"csrf_token": api_headers(logged_in)["X-CSRF-Token"]})
+    token = api_headers(logged_in)["X-CSRF-Token"]
+    res = logged_in.post(f"/c/{cid}/delete", data={"csrf_token": token})  # → trash
     assert res.status_code == 302 and res.headers["Location"].endswith("/history")
+    assert logged_in.get(f"/c/{cid}").status_code == 404
+    logged_in.post(f"/trash/{cid}/delete", data={"csrf_token": token})  # permanent
     assert repo.get_conversation(uid(logged_in), cid) is None
     assert repo.get_messages(uid(logged_in), cid) == []
-    assert logged_in.get(f"/c/{cid}").status_code == 404
 
 
 def test_ai_failure_keeps_user_message_and_allows_explicit_retry(app, logged_in, repo):
