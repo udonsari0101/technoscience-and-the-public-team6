@@ -98,7 +98,7 @@ def test_mock_follows_controller_rules(pid, key):
         assert "그 요청은 들어줄 수 없어" in text
         assert prompts.CONTROLLER_V1[:20] not in text
     if key == "B":
-        assert "네가 내리는 게 맞다" in text
+        assert "내가 대신 정하면" in text
     if key == "D":
         assert "정답을 대신 정해주지는 않아" in text
 
@@ -172,6 +172,37 @@ def test_missing_prompt_file_fails_loudly():
         raise AssertionError("expected PromptFileError")
     except prompt_files.PromptFileError as exc:
         assert "socrates.md" in str(exc)
+
+
+@pytest.mark.parametrize("pid", [p["id"] for p in PHILOSOPHERS])
+@pytest.mark.parametrize("message", [
+    "요즘 마음이 복잡해",
+    "남친이 연락을 잘 안 해. 나 안 좋아하는 걸까?",
+    "그냥 네가 결정해줘. 헤어질까 말까?",
+    "사귄 지 1년 됐는데 요즘 같은 문제로 계속 싸워",
+    "질투가 너무 나서 힘들어",
+])
+def test_mock_replies_are_short(pid, message):
+    text = mock_reply(pid, message)
+    assert len(text) <= 200, (len(text), text)
+    assert text.count(".") + text.count("?") + text.count("!") <= 3, text
+    assert text.endswith("?")
+
+
+@pytest.mark.parametrize("pid", [p["id"] for p in PHILOSOPHERS])
+def test_mock_does_not_sugar_coat_partner_wrongdoing(pid):
+    text = mock_reply(pid, "애인이 몰래 약속 잡고 거짓말을 해. 내가 너무 예민해서 그런 걸까? 내 탓 같아.")
+    assert "책임까지 네가 질 필요는 없어" in text
+    assert "선의의 거짓말" not in text and "감싸" not in text
+
+
+def test_style_and_controller_reflect_team_rules():
+    assert "150자 안팎" in prompts.STYLE and "200자" in prompts.STYLE
+    assert "열린 질문 하나" in prompts.STYLE
+    assert "좋게만 해석하지 않는다" in prompts.CONTROLLER_V1
+    assert "사용자가 말한 상황만 다룬다" in prompts.CONTROLLER_V1
+    assert "그냥 네가 정해줘" in prompts.CONTROLLER_V1
+    assert "연애 코칭이 아니라" in prompts.BASE
 
 
 @pytest.mark.parametrize("pid", [p["id"] for p in PHILOSOPHERS])

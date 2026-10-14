@@ -90,10 +90,10 @@ def main(argv: list[str]) -> int:
     r = t.get("/new")
     t.check("philosopher selection", "누구와 이야기해볼까요?" in r.text and r.text.count("ph-card ") == 4)
     r = t.get("/philosophers/epicurus")
-    t.check("philosopher detail", "이런 고민과 잘 맞아요" in r.text)
+    t.check("philosopher detail", "이런 질문을 던져요" in r.text)
     r = t.get("/chat/aristotle")
     token = t.csrf(r.text)
-    t.check("empty chat page", "편하게 이야기해 주세요" in r.text and bool(token))
+    t.check("empty chat page", "메시지 입력" in r.text and bool(token))
 
     hdr = {"X-CSRF-Token": token}
     started = time.perf_counter()

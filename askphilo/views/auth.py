@@ -47,7 +47,6 @@ def signup():
             return render_template("auth/signup.html", form=form, errors=errors), 400
         log.info("signup ok user=%s", user["id"])
         login_user(user)
-        flash(f"{user['name']}님, 반가워요!", "success")
         return redirect(url_for("pages.home"))
     return render_template("auth/signup.html", form=form, errors=errors)
 

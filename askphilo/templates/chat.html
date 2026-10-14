@@ -33,7 +33,6 @@
         data-conversation-id="{{ conversation.id if conversation else '' }}"
         data-philosopher-id="{{ p.id }}"
         data-philosopher-name="{{ p.name }}"
-        data-philosopher-tagline="{{ p.tagline }}"
         data-oldest-index="{{ messages[0]['index'] if messages else 0 }}"
         data-max-chars="{{ max_chars }}">
     <header class="chat-header">
@@ -42,7 +41,7 @@
         <img class="avatar avatar-sm" src="{{ url_for('static', filename=p.avatar) }}" alt="" width="36" height="36">
         <div class="chat-header-text">
           <h1 class="chat-header-name" data-chat-title>{{ conversation.title if conversation and conversation.title else p.name }}</h1>
-          <p class="chat-header-tagline" data-chat-subtitle>{% if conversation and conversation.title %}{{ p.name }} · {{ p.tagline }}{% else %}{{ p.tagline }}{% endif %}</p>
+          <p class="chat-header-tagline" data-chat-subtitle {% if not (conversation and conversation.title) %}hidden{% endif %}>{{ p.name }}</p>
         </div>
       </div>
       <div class="menu-wrap">
@@ -68,8 +67,7 @@
           <img class="avatar avatar-sm" src="{{ url_for('static', filename=p.avatar) }}" alt="" width="36" height="36">
           <div class="bubble">{{ p.greeting }}</div>
         </div>
-        <div class="starters" data-starters>
-          <p class="starters-label">이렇게 시작해 볼 수 있어요</p>
+        <div class="starters" data-starters role="group" aria-label="예시 질문">
           {% for s in p.starter_prompts %}<button type="button" class="starter" data-starter>{{ s }}</button>{% endfor %}
         </div>
         {% endif %}
@@ -110,12 +108,11 @@
       <form class="composer-inner" data-composer novalidate>
         <label class="sr-only" for="composer-input">메시지</label>
         <textarea id="composer-input" name="content" rows="1" maxlength="{{ max_chars }}"
-                  placeholder="편하게 이야기해 주세요" enterkeyhint="send" autocomplete="off"></textarea>
+                  placeholder="메시지 입력" enterkeyhint="send" autocomplete="off"></textarea>
         <button type="submit" class="send-btn" aria-label="보내기" disabled>{{ icon('send') }}</button>
       </form>
       <p class="composer-meta">
         <span class="daily-hint{% if daily.low %} is-low{% endif %}" data-daily>오늘 남은 질문 <strong data-daily-remaining>{{ daily.remaining }}</strong>개</span>
-        <span class="composer-hint">Enter로 보내기 · Shift + Enter로 줄바꿈</span>
       </p>
       {% endif %}
     </div>

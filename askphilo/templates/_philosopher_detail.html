@@ -15,12 +15,6 @@
     <p>{{ p.lens }}</p>
   </section>
   <section class="ph-block">
-    <{{ sub }} class="ph-block-title">이런 고민과 잘 맞아요</{{ sub }}>
-    <ul class="ph-list">
-      {% for item in p.good_for %}<li>{{ item }}</li>{% endfor %}
-    </ul>
-  </section>
-  <section class="ph-block">
     <{{ sub }} class="ph-block-title">이런 질문을 던져요</{{ sub }}>
     <ul class="ph-quote-list">
       {% for q in p.question_style %}<li>{{ q }}</li>{% endfor %}

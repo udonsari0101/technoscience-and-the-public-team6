@@ -6,7 +6,7 @@
   {{ back_link(url_for('main.index'), '처음으로') }}
 </header>
 <main id="main" class="page page-enter form-page">
-  <h1 class="page-title">다시 만나서 반가워요</h1>
+  <h1 class="page-title">로그인</h1>
   <form class="form" method="post" action="{{ url_for('auth.login') }}" novalidate data-submit-once>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}

@@ -19,7 +19,6 @@
   var conversationId = root.getAttribute("data-conversation-id") || "";
   var philosopherId = root.getAttribute("data-philosopher-id");
   var philosopherName = root.getAttribute("data-philosopher-name") || "상담";
-  var philosopherTagline = root.getAttribute("data-philosopher-tagline") || "";
   var oldestIndex = parseInt(root.getAttribute("data-oldest-index") || "0", 10);
   var busy = false;
   var desktopEnter = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
@@ -152,7 +151,10 @@
     var sub = document.querySelector("[data-chat-subtitle]");
     var renameInput = document.querySelector("[data-rename-input]");
     if (h1) h1.textContent = title;
-    if (sub) sub.textContent = philosopherName + " · " + philosopherTagline;
+    if (sub) {
+      sub.textContent = philosopherName;
+      sub.hidden = false;
+    }
     if (renameInput) renameInput.value = title;
     document.title = title + " · AskPhilo";
   }
@@ -344,14 +346,27 @@
     if (older) loadOlder(older);
   });
 
-  // Keep the newest message visible when the mobile keyboard resizes the view.
+  // Mobile keyboard: browsers that don't resize the layout (iOS Safari) only
+  // shrink the visual viewport, so size the chat to it and keep the newest
+  // message in view.
   if (window.visualViewport) {
-    var lastHeight = window.visualViewport.height;
-    window.visualViewport.addEventListener("resize", function () {
-      var h = window.visualViewport.height;
+    var vv = window.visualViewport;
+    var lastHeight = vv.height;
+    var fitViewport = function () {
+      var h = vv.height;
+      var html = document.documentElement;
+      if (h < window.innerHeight - 1 && vv.scale <= 1.01) { // keyboard, not pinch zoom
+        html.style.setProperty("--chat-h", h + "px");
+        html.classList.add("kb-open");
+        window.scrollTo(0, 0);
+      } else {
+        html.classList.remove("kb-open");
+        html.style.removeProperty("--chat-h");
+      }
       if (h < lastHeight) scrollToBottom(true);
       lastHeight = h;
-    });
+    };
+    vv.addEventListener("resize", fitViewport);
   }
 
   scrollToBottom(true);

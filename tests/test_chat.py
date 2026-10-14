@@ -55,7 +55,7 @@ def test_fixed_taglines():
 
 def test_philosopher_detail_page(logged_in):
     html = logged_in.get("/philosophers/aristotle").get_data(as_text=True)
-    for section in ("이렇게 고민을 바라봐요", "이런 고민과 잘 맞아요", "이런 질문을 던져요"):
+    for section in ("이렇게 고민을 바라봐요", "이런 질문을 던져요"):
         assert section in html
     assert logged_in.get("/philosophers/socrates").status_code == 404
 
@@ -68,7 +68,7 @@ def test_philosopher_stylesheet(client):
 
 def test_start_page_creates_nothing(logged_in, repo):
     html = logged_in.get("/chat/epicurus").get_data(as_text=True)
-    assert "편하게 이야기해 주세요" in html
+    assert "메시지 입력" in html
     assert 'data-conversation-id=""' in html
     assert repo.list_conversations(uid(logged_in)) == []
 

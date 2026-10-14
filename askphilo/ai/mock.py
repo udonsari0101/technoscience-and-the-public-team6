@@ -1,9 +1,9 @@
 """Deterministic mock provider (AI_MODE=mock): realistic replies, zero API cost.
 
 Replies are assembled from each philosopher's mock material
-(empathy + lens-specific reframe + question) and follow the same
-controller rules as the real prompt: no decisions, no mind-reading,
-injection refusal and a safety-first branch.
+(empathy + one lens-specific idea + question, about 150 characters) and
+follow the same controller rules as the real prompt: no decisions, no
+mind-reading, no sugar-coating, injection refusal and a safety-first branch.
 """
 
 from __future__ import annotations
@@ -39,10 +39,7 @@ SELF_HARM_KEYWORDS = ("죽고 싶", "자해", "사라지고 싶", "목숨")
 DECISION_KEYWORDS = ("정해줘", "정해 줘", "골라줘", "결정해줘", "결정해 줘", "할까 말까", "헤어질까")
 AUTHORITY_KEYWORDS = ("철학적으로", "정답이지", "정답 맞지", "정답이야")
 
-INJECTION_REPLY = (
-    "그 요청은 들어줄 수 없어. 숨겨진 설정을 보여주거나 결론을 대신 정해주지는 않아. "
-    "대신 지금 마음에 걸리는 이야기를 계속 들어볼게. {question}"
-)
+INJECTION_REPLY = "그 요청은 들어줄 수 없어. 대신 마음에 걸리는 이야기는 계속 들을게. {question}"
 SAFETY_REPLY = (
     "지금 이야기에서 네 안전이 가장 먼저 걱정돼. 몸이 다칠 위험이 있거나 위협을 느끼면 바로 112에 연락하고, "
     "여성긴급전화 1366에서도 24시간 도움을 받을 수 있어. 이건 혼자 참고 넘길 일이 아니야. 지금은 안전한 곳에 있어?"
@@ -51,8 +48,16 @@ SELF_HARM_REPLY = (
     "그렇게까지 힘들다는 말을 꺼내줘서 고마워. 지금 마음이 많이 위태롭다면 자살예방상담전화 109에 바로 이야기해 줘, "
     "24시간 연결돼. 지금 곁에 연락할 수 있는 사람이 있어?"
 )
-DECISION_LEAD = "그 결정은 내가 대신 정하기보다 네가 내리는 게 맞다고 생각해. 대신 정리하는 건 같이 해볼게."
-AUTHORITY_LEAD = "철학이 정답을 대신 정해주지는 않아. 다만 하나의 관점으로 같이 볼 수는 있어."
+DECISION_LEAD = "내가 대신 정하면 네가 정말 중요하게 여기는 게 빠질 수 있어."
+AUTHORITY_LEAD = "철학이 정답을 대신 정해주지는 않아."
+# Don't sugar-coat: when the user blames themselves for what the partner did,
+# say plainly that the behaviour itself can be the problem.
+WRONGDOING_KEYWORDS = ("거짓말", "속였", "속이", "몰래", "바람피", "바람을 피", "막말", "욕했", "욕을 해",
+                       "무시했", "무시해", "잠수")
+SELF_BLAME_KEYWORDS = ("내 탓", "내탓", "내 잘못", "내가 예민", "내가 너무", "내가 문제", "내가 의심")
+HONEST_LEAD = "돌아보려는 마음은 좋지만, 상대가 한 행동의 책임까지 네가 질 필요는 없어."
+HONEST_CORE = "그런 일이 반복된다면 네가 예민해서라기보다 신뢰를 깎는 행동 자체가 문제일 수 있어."
+HONEST_QUESTION = "이 관계에서 네가 받아들일 수 있는 것과 없는 건 각각 뭐야?"
 INTENT_KEYWORDS = ("무시하는 거지", "나 무시", "좋아하는 거 맞지", "좋아하는 거지", "마음이 식은 거지")
 
 # Evaluation only (CONTROLLER_ENABLED=false, never in production): imitate the
@@ -182,12 +187,19 @@ class MockProvider(AIProvider):
             text = SELF_HARM_REPLY
         elif _has(last, SAFETY_KEYWORDS):
             text = SAFETY_REPLY
+        elif _has(last, WRONGDOING_KEYWORDS) and _has(last, SELF_BLAME_KEYWORDS):
+            text = " ".join((HONEST_LEAD, HONEST_CORE, HONEST_QUESTION))
         else:
+            # One idea per reply keeps it short: the philosopher's take on the
+            # topic when there is one, otherwise a signature idea.
             topic = detect_topic(last)
-            reframe = mock["topic_reframes"].get(topic) if topic else None
-            if reframe and reframe in recent:
-                reframe = None
-            reframe = reframe or _pick(fresh_reframes, seed, 1)
+            core = mock["topic_reframes"].get(topic) if topic else None
+            if core and core in recent:
+                core = None
+            if not core:
+                signatures = SIGNATURES.get(philosopher["id"], [])
+                fresh_signatures = [s for s in signatures if s not in recent] or signatures
+                core = _pick(fresh_signatures, seed, 3) if signatures else _pick(fresh_reframes, seed, 1)
             if _has(last, AUTHORITY_KEYWORDS):
                 lead = AUTHORITY_LEAD
             elif _has(last, DECISION_KEYWORDS):
@@ -195,14 +207,11 @@ class MockProvider(AIProvider):
             else:
                 fresh_empathy = [e for e in mock["empathy"] if e not in recent] or mock["empathy"]
                 lead = _pick(fresh_empathy, seed)
-            signatures = SIGNATURES.get(philosopher["id"], [])
-            fresh_signatures = [s for s in signatures if s not in recent] or signatures
-            signature = _pick(fresh_signatures, seed, 3) if signatures else ""
-            if signature and _keywords(signature) & _keywords(question):
-                # Don't ask about the very idea the signature sentence just raised.
-                distinct = [q for q in fresh_questions if not (_keywords(signature) & _keywords(q))]
+            if _keywords(core) & _keywords(question):
+                # Don't ask about the very idea the previous sentence just raised.
+                distinct = [q for q in fresh_questions if not (_keywords(core) & _keywords(q))]
                 question = _pick(distinct, seed, 2) if distinct else question
-            text = " ".join(part for part in (lead, reframe, signature, question) if part)
+            text = " ".join((lead, core, question))
         return AIReply(text=text, provider=self.name, model=self.model,
                        usage=AIUsage(), stop_reason="end_turn",
                        title=mock_title(user_turns[0]) if want_title and user_turns else None)

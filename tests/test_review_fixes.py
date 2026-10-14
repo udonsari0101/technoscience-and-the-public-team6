@@ -278,7 +278,7 @@ def test_settings_shows_and_clears_memory(logged_in, repo):
     res = logged_in.post("/settings/memory/clear", data={"csrf_token": csrf_from(logged_in)})
     assert res.status_code == 302
     assert repo.get_user_memory(uid(logged_in)) is None
-    assert "아직 기억해 둔 내용이 없어요" in logged_in.get("/settings").get_data(as_text=True)
+    assert "아직 없어요" in logged_in.get("/settings").get_data(as_text=True)
 
 
 def test_failed_reply_page_uses_full_error_copy(app, logged_in):

@@ -167,9 +167,9 @@ def test_passwords_never_logged(app, caplog):
 
 def test_home_shows_greeting(logged_in):
     html = logged_in.get("/home").get_data(as_text=True)
-    assert "안녕하세요, 홍길동님" in html
-    assert "오늘은 어떤 이야기를" in html
+    assert "홍길동님, 안녕하세요" in html
     assert "새 상담 시작" in html
+    assert "최근 대화" not in html  # nothing to list yet: no empty-state filler
 
 
 def test_settings_page(logged_in):

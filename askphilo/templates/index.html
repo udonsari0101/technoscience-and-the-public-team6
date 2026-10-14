@@ -11,12 +11,10 @@
       <li><img class="avatar avatar-md" src="{{ url_for('static', filename='img/philosophers/' ~ pid ~ '.svg') }}" alt="{{ name }}" width="44" height="44"></li>
       {% endfor %}
     </ul>
-    <p>원하는 철학자를 고르고, 연애 고민을 편하게 이야기해 보세요.<br>정답 대신 나에게 맞는 기준을 함께 찾아요.</p>
   </section>
   <div class="hero-actions">
     <a class="btn btn-primary btn-block" href="{{ url_for('auth.signup') }}">시작하기</a>
-    <a class="btn btn-ghost btn-block" href="{{ url_for('auth.login') }}">이미 계정이 있어요</a>
+    <a class="btn btn-ghost btn-block" href="{{ url_for('auth.login') }}">로그인</a>
   </div>
-  <p class="muted center footnote">AskPhilo는 결정을 대신하지 않아요. 생각을 정리하도록 도와요.</p>
 </main>
 {% endblock %}

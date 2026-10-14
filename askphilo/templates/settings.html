@@ -22,7 +22,6 @@
       <dl class="settings-list">
         <div class="settings-row"><dt>오늘 사용한 질문</dt><dd>{{ daily.used }} / {{ daily.limit }}</dd></div>
       </dl>
-      <p class="settings-note">답변을 받지 못한 질문은 세지 않아요. 매일 0시(한국 시간)에 다시 채워져요.</p>
     </div>
   </section>
 
@@ -55,12 +54,12 @@
       <ul class="memory-list">
         {% for item in items %}<li>{{ item }}</li>{% endfor %}
       </ul>
-      <p class="settings-note">여러 상담에 이어서 참고하는 내용이에요. 대화를 지워도 이 기억은 남아 있어요.</p>
+      <p class="settings-note">대화를 지워도 이 기억은 남아 있어요.</p>
       <a class="settings-row settings-link danger-text" href="#memory-dialog" data-dialog-open="memory-dialog">
         <span>상담 기억 지우기</span>{{ icon('trash') }}
       </a>
       {% else %}
-      <p class="settings-note">아직 기억해 둔 내용이 없어요. 긴 상담에서 직접 말한 선호나 가치만 짧게 기억해요.</p>
+      <div class="settings-row"><span class="muted">아직 없어요</span></div>
       {% endif %}
     </div>
   </section>

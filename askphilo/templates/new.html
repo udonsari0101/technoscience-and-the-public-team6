@@ -8,28 +8,23 @@
   <span class="icon-btn-spacer" aria-hidden="true"></span>
 </header>
 <main id="main" class="page page-wide page-enter">
-  <div class="select-head">
-    <h1>누구와 이야기해볼까요?</h1>
-    <p>고민을 바라보는 방식이 서로 달라요.</p>
-  </div>
+  <h1 class="select-title">누구와 이야기해볼까요?</h1>
   <ul class="ph-grid">
     {% for p in philosophers %}
     <li class="ph-card ph-{{ p.id }}">
       <div class="ph-card-head">
         <img class="avatar avatar-lg" src="{{ url_for('static', filename=p.avatar) }}" alt="" width="64" height="64">
-        <div>
+        <div class="ph-card-text">
           <h2 class="ph-card-name">{{ p.name }}</h2>
-          <p class="ph-card-era">{{ p.era }}</p>
+          <p class="ph-card-tagline">{{ p.tagline }}</p>
         </div>
       </div>
-      <p class="ph-card-tagline">{{ p.tagline }}</p>
-      <p class="ph-card-desc">{{ p.description }}</p>
       <ul class="chips" aria-label="주제">
         {% for t in p.topics %}<li class="chip">{{ t }}</li>{% endfor %}
       </ul>
       <div class="ph-card-actions">
         <a class="btn btn-secondary btn-sm" href="{{ url_for('chat.philosopher', philosopher_id=p.id) }}"
-           data-dialog-open="sheet-{{ p.id }}" aria-label="{{ p.name }} 더 알아보기">더 알아보기</a>
+           data-dialog-open="sheet-{{ p.id }}" aria-label="{{ p.name }} 소개">소개</a>
         <a class="btn btn-ph btn-sm" href="{{ url_for('chat.start', philosopher_id=p.id) }}"
            aria-label="{{ p.name|josa_wa }} 대화 시작">대화 시작</a>
       </div>

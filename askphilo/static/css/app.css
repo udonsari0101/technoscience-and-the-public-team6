@@ -134,6 +134,17 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* No double-tap-to-zoom wait on controls: taps react immediately. */
+a,
+button,
+input,
+textarea,
+select,
+label,
+summary {
+  touch-action: manipulation;
+}
+
 body.theme-ready,
 body.theme-ready .topbar,
 body.theme-ready .card,
@@ -263,13 +274,13 @@ p a,
 }
 
 .page-enter {
-  animation: page-in 0.32s var(--ease) both;
+  animation: page-in 0.2s var(--ease) both;
 }
 
 @keyframes page-in {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
@@ -442,18 +453,10 @@ p a,
   height: 52px;
   box-shadow: var(--shadow-sm);
 }
-.hero p {
-  margin-top: 12px;
-  color: var(--text-2);
-  font-size: 16px;
-}
 .hero-actions {
   margin-top: 36px;
   display: grid;
   gap: 8px;
-}
-.footnote {
-  margin-top: 24px;
 }
 
 /* ==========================================================================
@@ -583,17 +586,9 @@ p a,
 /* ==========================================================================
    Home
    ========================================================================== */
-.greeting {
-  padding: 12px 0 24px;
-}
-.greeting-hello {
-  color: var(--text-2);
-  font-size: 16px;
-  font-weight: 500;
-}
 .greeting-title {
-  margin-top: 6px;
-  font-size: 26px;
+  margin: 8px 0 20px;
+  font-size: 24px;
   line-height: 1.36;
   font-weight: 800;
   letter-spacing: -0.035em;
@@ -603,7 +598,7 @@ p a,
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 20px;
+  padding: 18px 20px;
   border-radius: var(--radius-lg);
   background: var(--primary-fill);
   color: var(--on-primary);
@@ -620,15 +615,8 @@ p a,
 }
 .cta-text {
   flex: 1;
-  display: grid;
-  gap: 2px;
-}
-.cta-text strong {
   font-size: 18px;
   font-weight: 700;
-}
-.cta-text span {
-  font-size: 14px; /* full white: >= 4.5:1 on the primary fill */
 }
 .cta-chevron {
   opacity: 0.8;
@@ -975,18 +963,12 @@ p a,
 /* ==========================================================================
    Philosopher selection
    ========================================================================== */
-.select-head {
-  padding: 4px 0 20px;
-}
-.select-head h1 {
+.select-title {
+  margin: 4px 0 16px;
   font-size: 24px;
   line-height: 1.38;
   font-weight: 800;
   letter-spacing: -0.03em;
-}
-.select-head p {
-  margin-top: 6px;
-  color: var(--text-2);
 }
 .ph-grid {
   display: grid;
@@ -995,8 +977,8 @@ p a,
 .ph-card {
   position: relative;
   display: grid;
-  gap: 14px;
-  padding: 20px;
+  gap: 12px;
+  padding: 16px;
   border-radius: var(--radius-lg);
   background: var(--surface);
   box-shadow: var(--shadow-sm);
@@ -1013,23 +995,24 @@ p a,
   align-items: center;
   gap: 14px;
 }
+.ph-card .avatar-lg {
+  width: 56px;
+  height: 56px;
+}
+.ph-card-text {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
 .ph-card-name {
-  font-size: 19px;
+  font-size: 18px;
   font-weight: 800;
   letter-spacing: -0.02em;
 }
-.ph-card-era {
-  color: var(--text-3);
-  font-size: 13px;
-}
 .ph-card-tagline {
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 1.5;
-}
-.ph-card-desc {
   color: var(--text-2);
   font-size: 15px;
+  line-height: 1.45;
 }
 .ph-card-actions {
   display: grid;
@@ -1359,6 +1342,11 @@ body.chat-page {
   height: 100vh;
   height: 100dvh;
 }
+/* Set by chat.js while an on-screen keyboard shrinks only the visual viewport (iOS). */
+html.kb-open body.chat-page,
+html.kb-open .chat-layout {
+  height: var(--chat-h);
+}
 .chat-sidebar {
   display: none;
 }
@@ -1439,7 +1427,7 @@ body.chat-page {
   display: flex;
   gap: 8px;
   max-width: 100%;
-  animation: msg-in 0.28s var(--ease) both;
+  animation: msg-in 0.2s var(--ease) both;
 }
 .msg-user {
   justify-content: flex-end;
@@ -1461,6 +1449,7 @@ body.chat-page {
   color: var(--bubble-user-text);
 }
 .msg-assistant .bubble {
+  max-width: min(calc(100% - 44px), 600px); /* full row minus the avatar */
   border-top-left-radius: 6px;
   background: var(--bubble-ai);
   color: var(--text);
@@ -1527,12 +1516,6 @@ body.chat-page {
   display: grid;
   gap: 8px;
   margin-top: 6px;
-}
-.starters-label {
-  color: var(--text-3);
-  font-size: 13px;
-  font-weight: 600;
-  margin: 8px 2px 0;
 }
 .starter {
   justify-self: start;
@@ -1616,13 +1599,6 @@ body.chat-page {
 }
 .send-btn.is-loading .icon {
   animation: spin 0.9s linear infinite;
-}
-.composer-hint {
-  max-width: 720px;
-  margin: 6px auto 0;
-  color: var(--text-3);
-  font-size: 12px;
-  text-align: center;
 }
 .composer-locked {
   max-width: 720px;
@@ -1719,6 +1695,33 @@ body.chat-page {
   }
 }
 
+/* Small phones (≤ 400px): tighter gutters and smaller chat avatars so
+   messages get more of the width. */
+@media (max-width: 400px) {
+  .page {
+    padding-left: calc(16px + var(--safe-left));
+    padding-right: calc(16px + var(--safe-right));
+  }
+  .chat-thread {
+    padding-left: calc(12px + var(--safe-left));
+    padding-right: calc(12px + var(--safe-right));
+  }
+  .msg .avatar-sm {
+    width: 30px;
+    height: 30px;
+  }
+  .msg-assistant .bubble {
+    max-width: calc(100% - 38px);
+  }
+  .msg-user .bubble {
+    max-width: 88%;
+  }
+  .composer {
+    padding-left: calc(10px + var(--safe-left));
+    padding-right: calc(10px + var(--safe-right));
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -1735,17 +1738,6 @@ body.chat-page {
    ========================================================================== */
 [hidden] {
   display: none !important;
-}
-.composer-hint {
-  display: none;
-}
-@media (hover: hover) and (pointer: fine) {
-  .composer-hint {
-    display: inline;
-  }
-  .composer-hint::before {
-    content: "· ";
-  }
 }
 .composer-meta {
   max-width: 720px;

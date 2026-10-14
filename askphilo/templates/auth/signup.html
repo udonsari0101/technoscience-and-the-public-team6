@@ -6,7 +6,7 @@
   {{ back_link(url_for('main.index'), '처음으로') }}
 </header>
 <main id="main" class="page page-enter form-page">
-  <h1 class="page-title">반가워요!<br>몇 가지만 알려주세요</h1>
+  <h1 class="page-title">회원가입</h1>
   <form class="form" method="post" action="{{ url_for('auth.signup') }}" novalidate data-submit-once>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="field">
@@ -20,7 +20,7 @@
       <input id="username" name="username" type="text" value="{{ form.username }}" minlength="3" maxlength="20"
         autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" required pattern="[A-Za-z0-9_]{3,20}"
         aria-describedby="username-hint{% if errors.get('username') %} username-error{% endif %}" {% if errors.get('username') %}aria-invalid="true"{% endif %}>
-      <p class="field-hint" id="username-hint">영문, 숫자, 밑줄(_) 3~20자 · 대소문자는 구분하지 않아요</p>
+      <p class="field-hint" id="username-hint">영문·숫자·밑줄(_) 3~20자</p>
       {{ field_error(errors, 'username') }}
     </div>
     <div class="field">

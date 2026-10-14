@@ -109,7 +109,7 @@ with sync_playwright() as p:
             page.fill("#password", password)
             page.click("button[type=submit]")
         page.wait_for_url("**/home")
-        check(f"{tag} login/signup → home", "님" in page.inner_text(".greeting-hello"))
+        check(f"{tag} login/signup → home", "님" in page.inner_text(".greeting-title"))
 
         for path in ("/home", "/new", "/settings", "/history"):
             page.goto(BASE + path)
