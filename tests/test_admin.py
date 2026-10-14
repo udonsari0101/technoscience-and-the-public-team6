@@ -146,7 +146,7 @@ def test_billing_form_is_admin_only_and_csrf_protected(app, client):
 
 def test_credit_summary_math():
     s = credit_summary({"credit_usd": 20.0, "outside_spend_usd": 0.5},
-                       {"cost_micro_usd": 1_500_000, "replies": 300})
+                       {"cost_micro_usd": 1_500_000, "reply_calls": 300, "replies": 900})
     assert s["used"] == 2.0 and s["remaining"] == 18.0
     assert s["per_reply"] == 0.005 and s["replies_left"] == 3600
     assert credit_summary({}, {})["remaining"] is None

@@ -66,7 +66,8 @@ def credit_summary(settings: dict, totals: dict) -> dict:
     service_micro = int(totals.get("cost_micro_usd") or 0)
     used_micro = service_micro + round(outside * 1_000_000)
     remaining_micro = None if credit is None else round(credit * 1_000_000) - used_micro
-    replies = totals.get("replies", 0) or 0
+    # paid reply calls only: mock replies are free and would drag the average down
+    replies = totals.get("reply_calls", 0) or 0
     service, used = usd(service_micro), usd(used_micro)
     remaining = None if remaining_micro is None else usd(remaining_micro)
     per_reply = service / replies if replies and service_micro else None
