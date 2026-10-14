@@ -386,7 +386,7 @@ SDK logger(`anthropic`, `httpx`, `httpcore` 등)는 WARNING 이상으로 고정�
 ## 11. Render deployment
 
 - **응답 속도:** Firestore(asia-southeast1)와 Render(singapore)가 같은 지역이라 저장소 왕복은 몇 ms입니다. 체감 대기의 대부분은 모델 생성 시간이라 스트리밍으로 첫 말풍선을 앞당겼습니다.
-- **cold start 방지:** 무료 인스턴스는 15분 동안 요청이 없으면 잠들고, 깨어나는 데 최대 1분쯤 걸립니다. `.github/workflows/keep-warm.yml`이 10분마다 `/health`를 호출해 깨워 둡니다(인스턴스 1개를 한 달 내내 켜도 무료 750시간 안). 파일을 지우면 다시 잠들 수 있습니다.
+- **cold start:** 무료 인스턴스는 15분 동안 요청이 없으면 잠들고, 깨어나는 데 최대 1분쯤 걸립니다. 이 저장소 밖의 uptime 모니터가 `/health`를 주기적으로 호출해 깨워 둡니다.
 
 `render.yaml` Blueprint: Python Free web service `askphilo`, region `singapore`, branch `main`, `autoDeployTrigger: commit`, `healthCheckPath: /health`, `SECRET_KEY: generateValue`.
 `main`에 push하면 자동으로 배포됩니다.

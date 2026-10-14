@@ -155,7 +155,7 @@
 
 ## 답변 속도 · 말풍선 · 근거 보기 · 시간 (사용자 요청)
 - [x] 응답 속도: Firestore·Render 같은 지역(asia-southeast1/singapore) 확인 → 대기의 대부분은 모델 생성. 같은 요청 1개를 스트리밍(SSE)해 문장이 끝나는 대로 표시, 생성·저장은 별도 thread(연결이 끊겨도 저장)
-- [x] cold start 방지: GitHub Actions `keep-warm`이 10분마다 /health
+- [x] cold start: 사용자가 따로 uptime 봇을 운영 중이라, 요청 없이 추가했던 GitHub Actions `keep-warm`은 제거
 - [x] production 첫 답변이 18초 걸림 → 모델은 2.4초(로컬 측정, thinking 없음), 나머지는 무료 서버의 느린 CPU에서 Anthropic SDK를 처음 import하는 시간으로 판단 → worker 시작 때 background에서 SDK·client 준비(요청 없음), 답변에 단계별 시간(context/첫 글자/AI/전체) 기록
 - [x] 답변을 문장 말풍선으로 순서대로(0.8~1.7초 간격, 타이핑 표시), 재생 중 입력·첨부 잠금, 새로고침해도 같은 말풍선(서버·JS 같은 규칙)
 - [x] ⓘ 근거 보기: 누를 때만 Haiku로 개념/연결/질문 3줄 생성, 처음 한 번 질문 1개 차감(실패 시 환불), 메시지에 저장해 다시 열면 무료
