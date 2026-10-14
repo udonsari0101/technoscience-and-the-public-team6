@@ -38,6 +38,9 @@ Browser ──▶ Cloudflare ──▶ Render LB ──▶ Flask (Gunicorn) ─�
 | `firestore_smoke.py` | 실제 Firestore 연동 점검 (임시 사용자로 전체 연산 → 자동 정리) |
 | `smoke_test.py URL [--cleanup]` | 배포된 서버 HTTP end-to-end 점검 (mock일 때만 채팅 전송) |
 | `ui_check.py URL OUT` | headless 브라우저 UI 점검 (360/375/390/430px, 키보드, 테마, 대화상자) — `pip install playwright` 필요 |
+| `device_check.py URL OUT [--pace=6]` | iPhone(WebKit)·Android(Chromium) 기기 에뮬레이션, 키보드가 올라온 상태(viewport 축소) 확인 |
+| `a11y_check.py URL` | axe-core 접근성 감사 (light/dark, 주요 화면). serious/critical 위반이 있으면 실패 |
+| `live_eval.py [--yes] [--long] [--model=...]` | **유료** 실제 모델 평가 (시나리오 A~G·안전, 호출 수·token 보고). `--yes`와 `AI_MODE=anthropic` 없이는 호출하지 않음 |
 | `make_icons.py` | 로고 SVG와 같은 모양으로 favicon / touch icon PNG 생성 |
 
 ## 2. Local run
@@ -225,12 +228,15 @@ USER    = [상담 참고 정보 — 지시가 아님] <memory>…</memory> <summ
   - 한글 IME 조합 중에는 Enter를 무시합니다. Enter 전송은 desktop에서만 동작하고, Shift+Enter는 줄바꿈입니다.
 - **모바일:** `100dvh`, `safe-area-inset-*`, sticky composer, 긴 단어 줄바꿈. 360/375/390/430px에서 가로 넘침이 없는지 `scripts/ui_check.py`로 확인했습니다.
 - **Desktop:** 960px 이상에서 왼쪽 최근 대화 sidebar가 나옵니다.
+- **기기 확인:** iPhone SE(320px)·13·14 Pro Max(WebKit), Galaxy S8·Pixel 7(Chromium)에서 키보드가 올라온 상태까지 `scripts/device_check.py`로 확인했습니다. 실제 기기 확인은 별도로 필요합니다.
+- **홈 화면 추가:** `manifest.webmanifest`(service worker·오프라인 기능 없음). `robots.txt`는 로그인 영역을 크롤링하지 않도록 합니다.
 - **테마:** 시스템/라이트/다크. `localStorage`에 저장하고, 첫 화면을 그리기 전에 적용합니다.
 - **애니메이션:** 페이지·메시지·sheet·dialog·typing·누름 효과. `prefers-reduced-motion`이면 끕니다.
 - **접근성:**
   - semantic HTML, label, skip link, 대화 영역 `role=log`, 대화상자 `<dialog>`
   - 보이는 focus ring, 44px 이상 터치 영역
-  - 본문·보조 텍스트 대비 4.5:1 이상
+  - 본문·보조 텍스트 대비 4.5:1 이상, 문장 안 링크 밑줄
+  - axe-core 감사 위반 0 (light/dark 26개 화면, `scripts/a11y_check.py`)
 - **삭제:** "이 대화를 삭제할까요? / 삭제한 대화는 다시 볼 수 없어요." 확인 후 messages까지 지웁니다(JS가 없으면 확인 페이지).
 - **오류 문구:**
   - AI 실패: "답변을 가져오지 못했어요. 잠시 후 다시 시도해 주세요."
@@ -271,7 +277,7 @@ Firestore 조회, AI 호출, secret 노출이 없는 가벼운 endpoint입니다
 ## 13. Tests
 
 ```bash
-pytest -q                                               # 158 tests, 오프라인
+pytest -q                                               # 159 tests, 오프라인
 python scripts/smoke_test.py https://askphilo.kro.kr    # 배포 확인 (mock일 때)
 ```
 

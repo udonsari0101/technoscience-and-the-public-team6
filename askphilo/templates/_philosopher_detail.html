@@ -1,4 +1,5 @@
-{# expects `p` (philosopher) and `heading` ('h1' | 'h2') #}
+{# expects `p` (philosopher) and `heading` ('h1' | 'h2'); sections use the next level #}
+{% set sub = 'h2' if heading == 'h1' else 'h3' %}
 <div class="ph-detail ph-{{ p.id }}">
   <div class="ph-detail-head">
     <img class="avatar avatar-xl" src="{{ url_for('static', filename=p.avatar) }}" alt="" width="96" height="96">
@@ -10,17 +11,17 @@
     </ul>
   </div>
   <section class="ph-block">
-    <h3>이렇게 고민을 바라봐요</h3>
+    <{{ sub }} class="ph-block-title">이렇게 고민을 바라봐요</{{ sub }}>
     <p>{{ p.lens }}</p>
   </section>
   <section class="ph-block">
-    <h3>이런 고민과 잘 맞아요</h3>
+    <{{ sub }} class="ph-block-title">이런 고민과 잘 맞아요</{{ sub }}>
     <ul class="ph-list">
       {% for item in p.good_for %}<li>{{ item }}</li>{% endfor %}
     </ul>
   </section>
   <section class="ph-block">
-    <h3>이런 질문을 던져요</h3>
+    <{{ sub }} class="ph-block-title">이런 질문을 던져요</{{ sub }}>
     <ul class="ph-quote-list">
       {% for q in p.question_style %}<li>{{ q }}</li>{% endfor %}
     </ul>

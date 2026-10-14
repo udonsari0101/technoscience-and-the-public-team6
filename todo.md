@@ -66,7 +66,8 @@
 - [x] Conversation 삭제 (messages subcollection 포함, 확인 dialog/페이지)
 - [x] Soft limit 안내 / Hard limit 차단 (기존 대화는 읽기 가능)
 - [x] 대화별 접근 제어 (다른 사용자 404)
-- [ ] Mobile chat keyboard 실제 기기 테스트 (iOS Safari / Android Chrome)
+- [x] iOS Safari(WebKit) / Android Chrome 에뮬레이션 + 키보드(viewport 축소) 검증 (`scripts/device_check.py`: iPhone SE·13·14 Pro Max, Galaxy S8, Pixel 7 — 65/65)
+- [ ] Mobile chat keyboard 실제 기기 테스트 (iOS Safari / Android Chrome) — 사용자 기기 필요
 
 ## Memory / Context
 - [x] Context builder (system + user memory + summary + recent messages)
@@ -86,6 +87,9 @@
 - [x] Token usage 저장 (message + conversation `usage`)
 - [x] Prompt caching (top-level automatic cache, append-only context)
 - [x] Usage 확인 도구 (`flask usage`, `/dev/usage` development 전용)
+- [x] `flask usage`를 실제 Firestore(collection group)에서 확인 (읽기 전용, index 불필요)
+- [x] 실제 모델 평가 스크립트 `scripts/live_eval.py` (시나리오 A~G·안전, 호출 수·token 측정, `--yes`+`AI_MODE=anthropic` 없이는 호출 안 함, in-memory 저장)
+- [x] Mock: 공감 문장도 최근 사용분 반복 회피, sheet 열 때 닫기 버튼 focus ring 제거
 - [x] 기본 모델 `claude-opus-5-5`, `ANTHROPIC_EFFORT=low`, thinking headroom
 - [!] 실제 Anthropic 호출 검증 — 사용자가 AI_MODE=anthropic 전환을 결정할 때까지 보류 (유료). Render `ANTHROPIC_MODEL` 현재값 확인 필요
 
@@ -96,6 +100,8 @@
 - [x] Desktop sidebar layout (≥960px)
 - [x] Mobile 360/375/390/430 검증 (headless Chromium: 가로 넘침·sticky composer·44px·Enter 동작)
 - [x] 접근성 (label, focus ring, 44px, role=log, 대비 4.5:1, reduced motion)
+- [x] axe-core 자동 접근성 감사 (`scripts/a11y_check.py`: light/dark 26개 화면, 위반 0 — 링크 밑줄, CTA 대비, sheet 키보드 스크롤, heading 순서, landmark 수정)
+- [x] PWA manifest(홈 화면 추가, service worker 없음) · robots.txt
 
 ## Docs / QA
 - [x] README (spec 101 항목 + UI/로그/오류/범위/스크립트, 리뷰 지적 반영)
@@ -145,3 +151,6 @@
 - 가입 후 바로 로그인(Home 이동)으로 흐름을 줄임 — spec의 Signup → Login → Home 대비 의도적 단축 (변경 쉬움).
 - 일일/시간당 상한은 in-process(1 worker) 기준이라 재배포·재시작 시 초기화됨.
 - RaiDrive 쓰기 오류로 todo.md가 0바이트로 잘린 적 있음 → HEAD + 변경분으로 복원, 이후 로컬 작성 후 checksum 검증하며 복사.
+- 로컬 브라우저 테스트는 5060/5061(SIP) 포트를 쓰면 Chromium·WebKit이 접속을 거부함 → 5000/5070 사용.
+- Playwright WebKit 스크린샷이 주입하는 style을 CSP가 차단해 콘솔 오류가 남음 → 검사에서 제외(앱 문제 아님).
+- Git Bash heredoc을 거치면 `\n` 이스케이프가 실제 줄바꿈으로 바뀌어 Python 패치가 깨짐 → 패치는 파일로 작성해 실행.

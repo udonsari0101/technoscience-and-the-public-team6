@@ -9,8 +9,8 @@
 </header>
 <main id="main" class="page page-enter">
   {% with heading='h1' %}{% include "_philosopher_detail.html" %}{% endwith %}
+  <div class="sticky-cta ph-{{ p.id }}">
+    <a class="btn btn-ph btn-block" href="{{ url_for('chat.start', philosopher_id=p.id) }}">대화 시작하기</a>
+  </div>
 </main>
-<div class="sticky-cta ph-{{ p.id }}">
-  <a class="btn btn-ph btn-block" href="{{ url_for('chat.start', philosopher_id=p.id) }}">대화 시작하기</a>
-</div>
 {% endblock %}

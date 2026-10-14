@@ -229,6 +229,12 @@ button {
   color: var(--text-3);
   font-size: 14px;
 }
+p a,
+.muted a {
+  text-decoration: underline; /* links inside text must not rely on colour alone */
+  text-underline-offset: 3px;
+  font-weight: 600;
+}
 .center {
   text-align: center;
 }
@@ -611,8 +617,7 @@ button {
   font-weight: 700;
 }
 .cta-text span {
-  font-size: 14px;
-  opacity: 0.85;
+  font-size: 14px; /* full white: >= 4.5:1 on the primary fill */
 }
 .cta-chevron {
   opacity: 0.8;
@@ -879,7 +884,7 @@ button {
   background: var(--surface);
   box-shadow: var(--shadow-sm);
 }
-.ph-block h3 {
+.ph-block-title {
   margin-bottom: 10px;
   font-size: 15px;
   font-weight: 700;
@@ -974,6 +979,13 @@ button {
 }
 .sheet-body .ph-detail {
   padding-bottom: 16px;
+}
+.sheet-body:focus:not(:focus-visible) {
+  outline: none; /* focused programmatically when the sheet opens */
+}
+.sheet-body:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
 }
 .sheet-footer {
   padding: 12px 20px calc(16px + var(--safe-bottom));

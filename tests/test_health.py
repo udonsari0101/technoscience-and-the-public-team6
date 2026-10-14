@@ -69,6 +69,18 @@ def test_favicon(client):
     assert res.mimetype == "image/vnd.microsoft.icon"
 
 
+def test_manifest_and_robots(client):
+    res = client.get("/manifest.webmanifest")
+    assert res.status_code == 200 and res.mimetype == "application/manifest+json"
+    data = res.get_json(force=True)
+    assert data["short_name"] == "AskPhilo" and data["start_url"] == "/home"
+    for icon in data["icons"]:
+        assert client.get(icon["src"]).status_code == 200
+    robots = client.get("/robots.txt").get_data(as_text=True)
+    assert "Disallow: /api/" in robots and "Disallow: /c/" in robots
+    assert 'rel="manifest"' in client.get("/").get_data(as_text=True)
+
+
 def test_security_headers(client):
     res = client.get("/")
     assert res.headers["X-Content-Type-Options"] == "nosniff"

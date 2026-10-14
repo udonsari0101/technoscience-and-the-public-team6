@@ -137,7 +137,8 @@ class MockProvider(AIProvider):
             elif _has(last, DECISION_KEYWORDS):
                 lead = DECISION_LEAD
             else:
-                lead = _pick(mock["empathy"], seed)
+                fresh_empathy = [e for e in mock["empathy"] if e not in recent] or mock["empathy"]
+                lead = _pick(fresh_empathy, seed)
             text = f"{lead} {reframe} {question}"
         return AIReply(text=text, provider=self.name, model=self.model,
                        usage=AIUsage(), stop_reason="end_turn")

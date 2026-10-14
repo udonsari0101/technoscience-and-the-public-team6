@@ -42,7 +42,7 @@
 <dialog class="sheet" id="sheet-{{ p.id }}" aria-labelledby="ph-title-{{ p.id }}">
   <div class="sheet-handle" aria-hidden="true"></div>
   <button type="button" class="icon-btn sheet-close" data-dialog-close aria-label="닫기">{{ icon('close') }}</button>
-  <div class="sheet-body">
+  <div class="sheet-body" tabindex="0" autofocus>
     {% with heading='h2' %}{% include "_philosopher_detail.html" %}{% endwith %}
   </div>
   <div class="sheet-footer ph-{{ p.id }}">
