@@ -81,7 +81,7 @@ def main(argv: list[str]) -> int:
     page = t.get("/signup").text
     r = t.s.post(t.url("/signup"), data={"csrf_token": t.csrf(page), "name": "스모크", "username": username,
                                          "password": password, "password_confirm": password}, timeout=60)
-    t.check("signup → home", r.ok and "안녕하세요, 스모크님" in r.text, username)
+    t.check("signup → home", r.ok and "스모크님, 안녕하세요" in r.text, username)
     cookie = next((c for c in t.s.cookies if c.name == "askphilo_session"), None)
     if base.startswith("https"):
         t.check("session cookie Secure+HttpOnly", bool(cookie and cookie.secure and
@@ -132,7 +132,7 @@ def main(argv: list[str]) -> int:
     page = t.get("/login").text
     r = t.s.post(t.url("/login"), data={"csrf_token": t.csrf(page), "username": username.upper(),
                                         "password": password}, timeout=60)
-    t.check("login (case-insensitive)", "안녕하세요, 스모크님" in r.text)
+    t.check("login (case-insensitive)", "스모크님, 안녕하세요" in r.text)
 
     if "--cleanup" in flags:
         cleanup(username)

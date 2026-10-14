@@ -127,7 +127,7 @@
 - [x] 모바일: 400px 이하에서 여백·채팅 아바타 축소로 말풍선 폭 확대, `touch-action: manipulation`, 페이지·메시지 애니메이션 0.2s, iOS식 키보드(visual viewport만 줄어듦) 대응 — WebKit·Chromium에서 가짜 visualViewport로 확인, 320px 가로 넘침 0
 - [x] 팀원 규칙 반영: controller 10개 원칙(좋게만 해석하지 않기, 말한 상황만 다루기, "정해줘"에도 기준 정리, injection 거절 후 철학자 유지), style(2~3문장 150자 안팎·최대 200자, 열린 질문 하나, 쉬운 설명, 직설/부드러움 맞춤), base(정답 코칭이 아닌 성찰), summary(답변 방식 선호 기억), 아리스토텔레스(신뢰를 깎는 반복 행동은 분명히 짚기)
 - [x] mock 답변 단축(평균 약 245자 → 113자): 공감 + 관점 하나 + 질문. 상대의 잘못을 자기 탓으로 돌리는 경우 분기 추가
-- [x] 검증: pytest 215 통과, ui_check 44/44, device_check 65/65, a11y 위반 0
+- [x] 검증: pytest 215 통과, ui_check 44/44, device_check 65/65, a11y 위반 0, production smoke 27/27 (751c852 배포 후, 인사 문구 순서에 맞춰 smoke 점검 수정)
 - [ ] 바뀐 prompt로 짧은 live 확인 (유료 호출이라 사용자 확인 후)
 
 ## UI / UX
