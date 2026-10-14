@@ -283,6 +283,12 @@ class MemoryRepository(Repository):
             if conv is not None:
                 conv.update(copy.deepcopy(fields))
 
+    def set_message_fields(self, user_id, conversation_id, message_index, fields):
+        with self._lock:
+            msg = self.messages.get((user_id, conversation_id), {}).get(message_doc_id(message_index))
+            if msg is not None:
+                msg.update(copy.deepcopy(fields))
+
     @staticmethod
     def _add_usage(conv, increments):
         if not increments:

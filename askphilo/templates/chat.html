@@ -71,11 +71,15 @@
           {% for s in p.starter_prompts %}<button type="button" class="starter" data-starter>{{ s }}</button>{% endfor %}
         </div>
         {% endif %}
+        {% set ns = namespace(day='') %}
         {% for m in messages %}
-        <div class="msg msg-{{ m.role }}" data-index="{{ m['index'] }}">
+        {% if m.day and m.day != ns.day %}{% set ns.day = m.day %}
+        <div class="day-sep" data-day="{{ m.day }}" role="separator"><span>{{ m.day_label }}</span></div>
+        {% endif %}
+        <div class="msg msg-{{ m.role }}" data-index="{{ m['index'] }}" data-day="{{ m.day }}" data-day-label="{{ m.day_label }}">
           {% if m.role == 'assistant' %}<img class="avatar avatar-sm" src="{{ url_for('static', filename=p.avatar) }}" alt="" width="36" height="36">{% endif %}
-          {% if m.images %}
           <div class="msg-body">
+            {% if m.images %}
             <div class="msg-photos{% if (m.images|map(attribute='g')|unique|list|length) > 1 %} is-grid{% endif %}">
               {% for group in m.images|groupby('g') %}
               <a class="msg-photo" href="{{ group.list[0].url }}" target="_blank" rel="noopener"
@@ -84,11 +88,27 @@
               </a>
               {% endfor %}
             </div>
-            {% if m.content %}<div class="bubble"><span class="sr-only">나: </span>{{ m.content }}</div>{% endif %}
+            {% endif %}
+            {% if m.role == 'assistant' %}
+            {% for b in m.bubbles %}<div class="bubble">{% if loop.first %}<span class="sr-only">{{ p.name }}: </span>{% endif %}{{ b }}</div>{% endfor %}
+            {% elif m.content %}
+            <div class="bubble"><span class="sr-only">나: </span>{{ m.content }}</div>
+            {% endif %}
+            <div class="msg-meta">
+              {% if m.time %}<span class="msg-time">{{ m.time }}</span>{% endif %}
+              {% if m.role == 'assistant' %}
+              <button type="button" class="basis-btn" data-basis aria-expanded="false"
+                      aria-label="{{ '이 답변의 근거 보기' if m.basis else '이 답변의 근거 보기 (질문 1개 사용)' }}">{{ icon('info') }}</button>
+              {% endif %}
+            </div>
+            {% if m.role == 'assistant' %}
+            <div class="basis-card" data-basis-card {% if m.basis %}data-ready{% endif %} hidden>
+              {% for line in (m.basis or '').splitlines() %}{% set label, _, body = line.partition(': ') %}
+              <p><strong>{{ label }}</strong> {{ body }}</p>
+              {% endfor %}
+            </div>
+            {% endif %}
           </div>
-          {% else %}
-          <div class="bubble"><span class="sr-only">{{ '나: ' if m.role == 'user' else p.name ~ ': ' }}</span>{{ m.content }}</div>
-          {% endif %}
         </div>
         {% endfor %}
         {% if reply_state == 'failed' %}
@@ -129,10 +149,14 @@
                   placeholder="메시지 입력" enterkeyhint="send" autocomplete="off"></textarea>
         <button type="submit" class="send-btn" aria-label="보내기" disabled>{{ icon('send') }}</button>
       </form>
-      <p class="composer-meta">
-        <span class="daily-hint{% if daily.low %} is-low{% endif %}" data-daily>오늘 남은 질문 <strong data-daily-remaining>{{ daily.remaining }}</strong>개</span>
-        <span class="attach-cost" data-attach-cost hidden></span>
-      </p>
+      <div class="daily-gauge{% if daily.low %} is-low{% endif %}" data-daily
+           data-remaining="{{ daily.remaining }}" data-limit="{{ daily.limit }}">
+        <span class="daily-gauge-track" aria-hidden="true">
+          <span class="daily-gauge-fill" data-daily-fill></span><span class="daily-gauge-cost" data-daily-cost></span>
+        </span>
+        <span class="daily-gauge-num"><span class="sr-only">오늘 남은 질문 </span><strong data-daily-remaining>{{ daily.remaining }}</strong><span class="daily-gauge-of">/{{ daily.limit }}</span></span>
+        <span class="daily-gauge-minus" data-daily-cost-label aria-hidden="true" hidden></span>
+      </div>
       {% endif %}
     </div>
   </main>
@@ -178,6 +202,7 @@
 </dialog>
 
 <template id="tpl-close-icon">{{ icon('close') }}</template>
+<template id="tpl-info-icon">{{ icon('info') }}</template>
 <template id="tpl-assistant-avatar"><img class="avatar avatar-sm" src="{{ url_for('static', filename=p.avatar) }}" alt="" width="36" height="36"></template>
 {% endblock %}
 {% block scripts %}<script src="{{ url_for('static', filename='js/chat.js') }}" defer></script>{% endblock %}

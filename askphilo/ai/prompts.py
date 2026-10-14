@@ -106,6 +106,46 @@ def build_messages(raw_messages: list[dict], *, summary: str | None = None,
 # Photo reading (vision model): turns attached photos into text once.
 IMAGE_READER = prompt_files.load("image_reader.md")
 
+# Info button (light model): why a reply sounds like its philosopher.
+BASIS_SYSTEM = prompt_files.load("basis.md")
+BASIS_LABELS = ("개념", "연결", "질문")
+
+
+def build_basis_prompt(*, philosopher: dict, user_text: str, reply_text: str) -> str:
+    return "\n".join([
+        f"[철학자] {philosopher['name']}",
+        philosopher["prompt"],
+        "",
+        "[사용자 말]",
+        (user_text or "(사진만 보냄)").strip(),
+        "",
+        "[답변]",
+        reply_text.strip(),
+    ])
+
+
+def _clip(text: str, limit: int = 110) -> str:
+    """Shorten at a word boundary rather than mid-word."""
+    if len(text) <= limit:
+        return text
+    cut = text[:limit].rsplit(" ", 1)[0].rstrip(",.·")
+    return cut + "…"
+
+
+def clean_basis(raw: str) -> str:
+    """Keep the three labelled lines (개념/연결/질문); fall back to a short plain note."""
+    found = {}
+    for line in (raw or "").splitlines():
+        flat = line.strip().lstrip("-*• ").replace("**", "")
+        for label in BASIS_LABELS:
+            if flat.startswith(label) and label not in found:
+                body = flat[len(label):].lstrip(" :：-").strip()
+                if body:
+                    found[label] = _clip(body)
+    if found:
+        return "\n".join(f"{label}: {found[label]}" for label in BASIS_LABELS if label in found)
+    return " ".join((raw or "").split())[:240]
+
 
 # ---------------------------------------------------------------------------
 # Conversation titles — requested inside an existing call, never on their own

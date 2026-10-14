@@ -12,7 +12,7 @@ from __future__ import annotations
 import hashlib
 import time
 
-from .base import AIProvider, AIReply, AIUsage, ImageReading, SummaryResult
+from .base import AIProvider, AIReply, AIUsage, Explanation, ImageReading, SummaryResult
 
 TOPIC_KEYWORDS = {
     "contact": ("연락", "답장", "카톡", "문자", "읽씹", "안읽씹", "디엠", "dm"),
@@ -177,7 +177,32 @@ class MockProvider(AIProvider):
             jitter = (seed % 400) - 200  # 300–700 ms around the default 500 ms
             time.sleep(max(0, self.delay_ms + jitter) / 1000)
 
-    def reply(self, *, system, messages, philosopher, max_tokens, want_title=False):
+    def reply(self, *, system, messages, philosopher, max_tokens, want_title=False, on_text=None):
+        result = self._reply(system=system, messages=messages, philosopher=philosopher, want_title=want_title)
+        if on_text:
+            # Mimic streaming: the text in a few pieces, then the title tag.
+            pieces = [result.text[i:i + 9] for i in range(0, len(result.text), 9)]
+            for piece in pieces:
+                on_text(piece)
+                if self.delay_ms:
+                    time.sleep(min(0.08, self.delay_ms / 1000 / max(1, len(pieces))))
+            if result.title:
+                on_text(f"\n<title>{result.title}</title>")
+        return result
+
+    def explain(self, *, system, prompt, max_tokens):
+        """Deterministic note: the philosopher's first signature idea (from the prompt)."""
+        concept = ""
+        for line in prompt.splitlines():
+            if line.startswith("- "):
+                concept = line[2:].split(":")[0].strip()
+                break
+        text = (f"개념: {concept or '대표 개념'} — 답변에 녹아 있는 생각이에요.\n"
+                "연결: 사용자가 말한 상황을 이 개념으로 다시 봤어요.\n"
+                "질문: 스스로 기준을 떠올려 보게 하려는 질문이에요.")
+        return Explanation(text=text, provider=self.name, model=self.model)
+
+    def _reply(self, *, system, messages, philosopher, want_title=False):
         user_msgs = [m for m in messages if m["role"] == "user"
                      and not _text_of(m["content"]).startswith("[상담 참고 정보")]
         user_turns = [_text_of(m["content"]) for m in user_msgs]

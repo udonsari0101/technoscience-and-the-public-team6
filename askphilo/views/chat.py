@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
 import logging
+import queue
+import threading
 from datetime import datetime, timezone
 
 from flask import (
@@ -19,6 +22,7 @@ from flask import (
 
 from .. import background
 from ..ai import get_provider
+from ..data import DataError
 from ..services import images as image_files
 from ..auth import login_required
 from ..data import get_repository
@@ -40,6 +44,8 @@ SIDEBAR_SIZE = 20
 MSG_SLOW_DOWN = "메시지를 너무 빠르게 보내고 있어요. 잠시 후 다시 시도해 주세요."
 MSG_BUSY = "지금은 이용자가 많아요. 잠시 후 다시 시도해 주세요."
 UPLOADS_PER_10_MIN = 40
+STREAM_IDLE_SECONDS = 150  # longer than a reply plus photo reading
+MSG_SERVER = "잠시 문제가 생겼어요. 다시 시도해 주세요."
 
 
 def service() -> ConversationService:
@@ -76,6 +82,64 @@ def _budget_error():
     limiter.record(f"chat:{uid}", 60)
     limiter.record("ai-global", 3600)
     return None
+
+
+def _sse(kind: str, data: dict) -> str:
+    return f"event: {kind}\ndata: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"
+
+
+def _stream_send(svc: ConversationService, conversation_id: str, content: str, image_ids: list,
+                 meta: dict | None = None) -> Response:
+    """Server-sent events while the single reply request runs: "meta", "user",
+    "status", one "sentence" per finished sentence, then "done" or "error".
+    The reply runs in its own thread and is stored even if the browser goes away."""
+    app = current_app._get_current_object()
+    uid = g.user["uid"]
+    events: queue.Queue = queue.Queue()
+
+    def emit(kind, data):
+        events.put((kind, data))
+
+    def work():
+        try:
+            result = svc.send(uid, conversation_id, content, image_ids, on_event=emit)
+            if result["summary_due"]:
+                if app.config.get("TESTING") or app.config.get("SUMMARY_INLINE"):
+                    svc.maybe_summarize(uid, conversation_id)
+                else:
+                    background.submit(app, svc.maybe_summarize, uid, conversation_id)
+            emit("done", {"ok": True, **result, **(meta or {})})
+        except ChatError as exc:
+            emit("error", {"ok": False, "error": exc.code, "message": exc.message,
+                           "http_status": exc.status, **exc.extra})
+        except DataError:
+            emit("error", {"ok": False, "error": "storage", "message": MSG_SERVER, "http_status": 503})
+        except Exception as exc:  # noqa: BLE001 — never leak internals to the browser
+            log.error("streamed reply failed: %s", type(exc).__name__)
+            emit("error", {"ok": False, "error": "server", "message": MSG_SERVER, "http_status": 500})
+        finally:
+            events.put(None)
+
+    threading.Thread(target=work, name="askphilo-reply", daemon=True).start()
+
+    def generate():
+        yield ": stream\n\n"  # opens the stream right away through proxies
+        if meta:
+            yield _sse("meta", meta)
+        while True:
+            try:
+                item = events.get(timeout=STREAM_IDLE_SECONDS)
+            except queue.Empty:
+                yield _sse("error", {"ok": False, "error": "timeout", "message": MSG_SERVER})
+                return
+            if item is None:
+                return
+            yield _sse(*item)
+
+    response = Response(generate(), mimetype="text/event-stream")
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-Accel-Buffering"] = "no"
+    return response
 
 
 def _payload() -> dict:
@@ -297,6 +361,64 @@ def api_send(conversation_id):
         return _error(exc)
     if result["summary_due"]:
         _schedule_summary(svc, g.user["uid"], conversation_id)
+    return jsonify(ok=True, **result)
+
+
+@bp.post("/api/conversations/stream")
+@login_required
+def api_create_stream():
+    data = _payload()
+    svc = service()
+    philosopher_id = str(data.get("philosopher_id", ""))
+    try:
+        image_ids = svc.check_images(data.get("image_ids"))
+        content = svc.validate(data.get("content"), allow_empty=bool(image_ids))
+        if get_philosopher(philosopher_id) is None:
+            raise ChatError("bad_philosopher", "철학자를 다시 선택해 주세요.", 400)
+    except ChatError as exc:
+        return _error(exc)
+    blocked = _budget_error()
+    if blocked:
+        return blocked
+    try:
+        conv = svc.create_conversation(g.user["uid"], philosopher_id)
+    except ChatError as exc:
+        return _error(exc)
+    meta = {"conversation_id": conv["id"],
+            "conversation_url": url_for("chat.conversation", conversation_id=conv["id"])}
+    return _stream_send(svc, conv["id"], content, image_ids, meta)
+
+
+@bp.post("/api/conversations/<conversation_id>/messages/stream")
+@login_required
+def api_send_stream(conversation_id):
+    data = _payload()
+    svc = service()
+    try:
+        image_ids = svc.check_images(data.get("image_ids"))
+        content = svc.validate(data.get("content"), allow_empty=bool(image_ids))
+        svc.get(g.user["uid"], conversation_id)
+    except ChatError as exc:
+        return _error(exc)
+    blocked = _budget_error()
+    if blocked:
+        return blocked
+    return _stream_send(svc, conversation_id, content, image_ids)
+
+
+@bp.post("/api/conversations/<conversation_id>/messages/<int:message_index>/basis")
+@login_required
+def api_basis(conversation_id, message_index):
+    """Info button: why this reply sounds like its philosopher (first view uses a question)."""
+    limiter = get_limiter()
+    key = f"chat:{g.user['uid']}"
+    if not limiter.allowed(key, current_app.config["CHAT_MESSAGES_PER_MINUTE"], 60):
+        return jsonify(ok=False, error="rate_limited", message=MSG_SLOW_DOWN), 429
+    limiter.record(key, 60)
+    try:
+        result = service().basis(g.user["uid"], conversation_id, message_index)
+    except ChatError as exc:
+        return _error(exc)
     return jsonify(ok=True, **result)
 
 

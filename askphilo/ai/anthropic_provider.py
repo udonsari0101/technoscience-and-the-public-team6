@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import threading
 
-from .base import AIError, AIProvider, AIReply, AIUsage, ImageReading, SummaryResult
+from .base import AIError, AIProvider, AIReply, AIUsage, Explanation, ImageReading, SummaryResult
 from .prompts import TITLE_INSTRUCTION, parse_summary_output, split_title
 
 log = logging.getLogger("askphilo.ai")
@@ -47,7 +47,7 @@ class AnthropicProvider(AIProvider):
     is_billable = True
 
     def __init__(self, *, api_key: str, model: str, summary_model: str | None = None,
-                 vision_model: str | None = None,
+                 vision_model: str | None = None, light_model: str | None = None,
                  effort: str = "low", thinking_headroom: int = 1024,
                  timeout: float = 45.0, prompt_cache: bool = True,
                  refusal_fallback: bool = False):
@@ -55,6 +55,7 @@ class AnthropicProvider(AIProvider):
         self.model = model
         self.summary_model = summary_model or model
         self.vision_model = vision_model or model
+        self.light_model = light_model or model
         self.effort = effort
         self.thinking_headroom = max(0, thinking_headroom)
         self.timeout = timeout
@@ -80,7 +81,7 @@ class AnthropicProvider(AIProvider):
 
     # ----------------------------------------------------------------- request
     def _call(self, *, model: str, system: str, messages: list[dict], max_tokens: int,
-              cache: bool = True):
+              cache: bool = True, on_text=None):
         import anthropic
 
         params = {
@@ -108,12 +109,24 @@ class AnthropicProvider(AIProvider):
             # Breakpoint 2 (automatic): the end of the append-only conversation.
             params["cache_control"] = {"type": "ephemeral"}
         try:
-            if self.refusal_fallback and model in FALLBACK_MODELS:
-                response = self.client.beta.messages.create(
-                    betas=[FALLBACK_BETA], fallbacks="default", **params
-                )
+            fallback = self.refusal_fallback and model in FALLBACK_MODELS
+            if on_text is None:
+                if fallback:
+                    response = self.client.beta.messages.create(
+                        betas=[FALLBACK_BETA], fallbacks="default", **params
+                    )
+                else:
+                    response = self.client.messages.create(**params)
             else:
-                response = self.client.messages.create(**params)
+                # Same single request, streamed: text reaches the user while it is written.
+                stream = (self.client.beta.messages.stream(betas=[FALLBACK_BETA], fallbacks="default", **params)
+                          if fallback else self.client.messages.stream(**params))
+                with stream as events:
+                    for event in events:
+                        delta = getattr(event, "delta", None)
+                        if event.type == "content_block_delta" and getattr(delta, "type", None) == "text_delta":
+                            on_text(delta.text)
+                    response = events.get_final_message()
         except AIError:
             raise
         except anthropic.APITimeoutError as exc:
@@ -152,13 +165,13 @@ class AnthropicProvider(AIProvider):
         return "".join(parts).strip()
 
     # ------------------------------------------------------------------- API
-    def reply(self, *, system, messages, philosopher, max_tokens, want_title=False):
+    def reply(self, *, system, messages, philosopher, max_tokens, want_title=False, on_text=None):
         if want_title and self.model in MID_SYSTEM_MODELS:
             # Same request, one extra instruction at the end: no separate title call.
             messages = list(messages) + [{"role": "system", "content": TITLE_INSTRUCTION}]
             max_tokens += 30
         response = self._call(model=self.model, system=system, messages=messages,
-                              max_tokens=max_tokens)
+                              max_tokens=max_tokens, on_text=on_text)
         usage = self._usage(response)
         stop = getattr(response, "stop_reason", None)
         if stop == "refusal":
@@ -207,6 +220,19 @@ class AnthropicProvider(AIProvider):
                  usage.output_tokens, len(images))
         return ImageReading(text=text[:6000], provider=self.name,
                             model=getattr(response, "model", None) or self.vision_model, usage=usage)
+
+    def explain(self, *, system, prompt, max_tokens):
+        response = self._call(model=self.light_model, system=system,
+                              messages=[{"role": "user", "content": prompt}],
+                              max_tokens=max_tokens, cache=False)
+        usage = self._usage(response)
+        text = self._text(response)
+        if getattr(response, "stop_reason", None) == "refusal" or not text:
+            err = AIError("empty")
+            err.usage = usage
+            raise err
+        return Explanation(text=text[:600], provider=self.name,
+                           model=getattr(response, "model", None) or self.light_model, usage=usage)
 
     def summarize(self, *, system, prompt, philosopher, old_summary, old_memory,
                   transcript, max_tokens):

@@ -206,7 +206,7 @@ def test_mock_does_not_sugar_coat_partner_wrongdoing(pid):
 
 def test_style_and_controller_reflect_team_rules():
     assert "기본은 짧게" in prompts.STYLE and "문장 수로 지킨다" in prompts.STYLE and "카톡" in prompts.STYLE
-    assert "60자 이내" in prompts.STYLE and "120자 이내" in prompts.STYLE and "180자 이내" in prompts.STYLE
+    assert "50자 이내" in prompts.STYLE and "100자 이내" in prompts.STYLE and "150자 이내" in prompts.STYLE
     assert "대화 캡처는 거의 요청하지 않는다" in prompts.STYLE
     assert "물음표도 한 번만" in prompts.STYLE and "줄바꿈 없이" in prompts.STYLE
     assert "늘이지 않는다" in prompts.STYLE

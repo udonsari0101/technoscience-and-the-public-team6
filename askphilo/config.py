@@ -104,6 +104,8 @@ def load_config(env=None) -> dict:
         "ANTHROPIC_SUMMARY_MODEL": _str(env, "ANTHROPIC_SUMMARY_MODEL", ""),
         # Reads attached photos into text once; much cheaper per image than the reply model.
         "ANTHROPIC_VISION_MODEL": _str(env, "ANTHROPIC_VISION_MODEL", "claude-haiku-5-5"),
+        # Writes the on-demand "why this reply" note behind the info button.
+        "ANTHROPIC_LIGHT_MODEL": _str(env, "ANTHROPIC_LIGHT_MODEL", "claude-haiku-5-5"),
         "ANTHROPIC_EFFORT": _effort(_str(env, "ANTHROPIC_EFFORT", "low")),
         # Extra max_tokens for models whose thinking cannot be switched off.
         "ANTHROPIC_THINKING_HEADROOM_TOKENS": _int(env, "ANTHROPIC_THINKING_HEADROOM_TOKENS", 1024),

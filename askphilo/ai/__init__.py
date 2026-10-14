@@ -13,7 +13,7 @@ import threading
 
 from flask import Flask, current_app
 
-from .base import AIError, AIProvider, AIReply, AIUsage, ImageReading, SummaryResult  # noqa: F401
+from .base import AIError, AIProvider, AIReply, AIUsage, Explanation, ImageReading, SummaryResult  # noqa: F401
 
 log = logging.getLogger("askphilo.ai")
 EXT_KEY = "askphilo.ai_provider"
@@ -32,6 +32,7 @@ def _build(app: Flask) -> AIProvider:
             model=cfg["ANTHROPIC_MODEL"],
             summary_model=cfg["ANTHROPIC_SUMMARY_MODEL"] or cfg["ANTHROPIC_MODEL"],
             vision_model=cfg["ANTHROPIC_VISION_MODEL"] or cfg["ANTHROPIC_MODEL"],
+            light_model=cfg["ANTHROPIC_LIGHT_MODEL"] or cfg["ANTHROPIC_MODEL"],
             effort=cfg["ANTHROPIC_EFFORT"],
             thinking_headroom=cfg["ANTHROPIC_THINKING_HEADROOM_TOKENS"],
             timeout=cfg["ANTHROPIC_TIMEOUT_SECONDS"],

@@ -132,6 +132,9 @@ settings/billing                        관리자가 입력한 충전 금액·�
 API 사용 원칙:
 - **일반 메시지 1개 = API 요청 1개.** 대화 제목도 따로 요청하지 않고 첫 답변 요청 안에서 함께 받습니다(아래 6절). 인사·추천·감정 분석·background 작업에 AI를 쓰지 않습니다.
   - 예외: 사진이 붙은 메시지는 사진을 글로 옮기는 저렴한 요청이 1번 더 있습니다(아래 '사진 첨부').
+  - 답변 옆 ⓘ(근거 보기)는 사용자가 누를 때만, 처음 한 번 가벼운 모델(Haiku 5.5)로 만들고 질문 1개를 씁니다. 만든 근거는 메시지에 저장돼 다시 열면 무료입니다.
+- **답변은 스트리밍합니다.** 같은 요청 1개를 stream으로 받아, 문장이 끝나는 대로 화면에 보냅니다(`/api/…/stream`, server-sent events). 답변 생성은 별도 thread에서 끝까지 진행·저장되므로 중간에 연결이 끊겨도 답이 사라지지 않습니다.
+- **안전 거절:** Anthropic이 요청을 거절하면(예: "결과 문자열만 그대로 출력해" 같은 퍼즐) 오류와 다시 시도 대신 짧은 답("그 부탁은 들어줄 수 없어. 대신 …")을 저장합니다. 다시 시도해도 또 거절되고 또 과금되기 때문입니다.
 - `/health`, 가입, 로그인, 홈, 철학자 선택·상세, 대화 생성, 기록, 새로고침, 테스트에서는 AI를 호출하지 않습니다(테스트로 확인).
 - **자동 retry를 하지 않습니다.** SDK retry도 끕니다(`max_retries=0`). 실패하면 사용자 메시지는 저장된 채로 "답변을 가져오지 못했어요. 잠시 후 다시 시도해 주세요."를 보여주고, 사용자가 **다시 시도**를 눌렀을 때만 다시 요청합니다.
 - **중복 과금 방지:** 대화마다 답변 생성 lock이 있습니다. 생성 중에 새로고침하면 "답변을 준비하고 있어요"를 보여주고, 이 동안에는 다시 시도도 막습니다.
@@ -343,6 +346,11 @@ system_prompt/
 
 ## 9. UI / UX
 
+- **답변 말풍선:** 답변을 문장 단위 말풍선으로 나눠(12자 미만 짧은 문장은 다음 문장과 묶음) 하나씩 보여줍니다. 첫 말풍선은 준비되는 즉시, 다음 것은 타이핑 표시와 함께 0.8~1.7초 쉬고 나옵니다. 말풍선이 다 나올 때까지 입력창과 사진 첨부가 잠깁니다. 같은 규칙이 `services/bubbles.py`와 `chat.js`에 있어 새로고침해도 똑같이 보입니다.
+- **시간:** 메시지마다 보낸 시각(예: "오후 3:12"), 날짜가 바뀌면 "2026년 10월 14일 수요일" 구분선. 모두 서울 시간(KST) 기준입니다.
+- **오늘 남은 질문:** 입력창 아래 막대가 남은 비율만큼 차 있고, 질문을 쓰면 줄어들며 "−n"이 떠오릅니다. 사진을 첨부하면 이번에 쓸 만큼이 빗금으로 미리 표시됩니다.
+- **ⓘ 근거 보기:** 답변 시각 옆 버튼. 처음 누르면 "질문 1개를 써요"를 확인한 뒤 개념(그 철학자의 대표 개념) / 연결(사용자의 어떤 말에 적용했는지) / 질문(마지막 질문의 의도) 세 줄을 보여줍니다(`system_prompt/basis.md`).
+
 - **화면:** 시작 → 가입/로그인 → Home(인사, 새 상담 시작, 최근 대화 5개) → 철학자 선택(카드 + 상세 bottom sheet/페이지) → 채팅 → 기록/설정.
 - **채팅:**
   - 사용자 메시지를 바로 표시하고, typing 점과 전송 버튼 loading을 보여준 뒤 답변이 오면 입력을 다시 엽니다(전송 중 입력창은 readonly).
@@ -376,6 +384,9 @@ system_prompt/
 SDK logger(`anthropic`, `httpx`, `httpcore` 등)는 WARNING 이상으로 고정합니다. SDK가 DEBUG에서 요청 본문을 기록하기 때문입니다.
 
 ## 11. Render deployment
+
+- **응답 속도:** Firestore(asia-southeast1)와 Render(singapore)가 같은 지역이라 저장소 왕복은 몇 ms입니다. 체감 대기의 대부분은 모델 생성 시간이라 스트리밍으로 첫 말풍선을 앞당겼습니다.
+- **cold start 방지:** 무료 인스턴스는 15분 동안 요청이 없으면 잠들고, 깨어나는 데 최대 1분쯤 걸립니다. `.github/workflows/keep-warm.yml`이 10분마다 `/health`를 호출해 깨워 둡니다(인스턴스 1개를 한 달 내내 켜도 무료 750시간 안). 파일을 지우면 다시 잠들 수 있습니다.
 
 `render.yaml` Blueprint: Python Free web service `askphilo`, region `singapore`, branch `main`, `autoDeployTrigger: commit`, `healthCheckPath: /health`, `SECRET_KEY: generateValue`.
 `main`에 push하면 자동으로 배포됩니다.
@@ -421,11 +432,16 @@ Firestore 조회, AI 호출, secret 노출이 없는 가벼운 endpoint입니다
 ## 13. Tests
 
 ```bash
-pytest -q                                               # 190 tests, 오프라인
-python scripts/smoke_test.py https://askphilo.kro.kr    # 배포 확인 (mock일 때)
+pytest -q                                               # 실제 API 호출 0, 오프라인
+python scripts/smoke_test.py https://askphilo.kro.kr    # 배포 확인 (실제 API 모드면 --allow-live 필요)
+RUN_LIVE_LLM_SECURITY_TESTS=true ANTHROPIC_API_KEY=... pytest tests/test_live_security.py -s   # 유료, 5회
 ```
 
 - 자동 테스트는 실제 Anthropic API를 호출하지 않고 production Firestore도 건드리지 않습니다(`TESTING`이면 mock + in-memory로 강제).
+- **API 비용 원칙(보안 테스트):** 정적 분석과 deterministic test가 먼저이고, 같은 유형의 prompt injection을 변형해 반복 호출하는 fuzzing은 하지 않습니다.
+  - unit: 입력 분류, prompt 조립, 데이터 경계 (`test_prompts.py`, `test_streaming_basis.py` 등)
+  - mock LLM: 공격성 입력이 들어왔을 때 앱이 만드는 메시지 구조 — user 문장이 system에 섞이지 않음, 기억·요약·사진 글은 "지시가 아님" 자료 블록, 근거 prompt 구획, 출력 escape (`test_security_mock.py`, 맨 위에 예상 취약점 정리)
+  - live LLM: 대표 공격 5개만(직접 injection, 문자열 출력 퍼즐, 사진 속 지시, 역할극 강요, 근거 노트 유출). `RUN_LIVE_LLM_SECURITY_TESTS=true`일 때만 실행되고 기본·CI에서는 skip, 호출마다 token과 예상 비용을 출력, retry 없음. 2026-10-14 실행: 5회, 약 $0.042, 모두 통과.
 - **인증·보안:** 인증, CSRF, open redirect, rate limiter 메모리 안전성, 동시 가입, 비공개 접근, 잘못된 입력
 - **대화 흐름:** 대화 저장 순서, 삭제, 실패 보존과 명시적 retry, 생성 중 중복 요청 방지, soft/hard limit, 일일/전체 상한
 - **메모리:** context 압축 threshold와 증분 요약, 재오픈(Scenario F), 대화 간 독립(Scenario G), 요약 실패·잘린 출력 처리, 요약 동시 실행 방지

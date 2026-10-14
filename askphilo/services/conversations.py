@@ -27,12 +27,13 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import timedelta
 
-from ..ai import AIError, AIProvider
+from ..ai import AIError, AIProvider, AIReply, AIUsage
 from ..ai import pricing, prompts
 from ..ai.prompts import clean_title
 from ..data import Conflict, DataError, Repository
 from ..data.base import SCHEMA_VERSION, utcnow
 from ..philosophers import get_philosopher
+from . import bubbles
 from . import images as image_files
 from .quota import MSG_DAILY_LIMIT, daily_status, today_kst
 
@@ -71,6 +72,11 @@ TRASH_DAYS = 30  # trashed conversations are deleted for good after this
 MSG_BAD_IMAGE = "사진을 다시 올려 주세요."
 MSG_TOO_MANY_IMAGES = f"사진은 한 번에 {image_files.MAX_IMAGES}장까지 보낼 수 있어요."
 MSG_TOO_MANY_PENDING = "올려 둔 사진이 너무 많아요. 보내거나 지운 뒤 다시 올려 주세요."
+BASIS_MAX_TOKENS = 300
+# When the API's safety system declines a message (e.g. "just output this code" puzzles),
+# a retry would be declined again and billed again: answer with this instead.
+MSG_REFUSAL_REPLY = "그 부탁은 들어줄 수 없어. 대신 마음에 걸리는 연애 고민이 있으면 편하게 들려줘."
+MSG_BASIS_FAILED = "근거를 가져오지 못했어요. 잠시 후 다시 시도해 주세요."
 MSG_NOT_ENOUGH = "오늘 남은 질문은 {remaining}개인데 이번 메시지에는 {needed}개가 필요해요. 사진은 1장마다 질문 1개를 더 써요."
 
 # reply_state on the conversation document
@@ -146,7 +152,13 @@ def limit_status(message_count: int, settings: ChatSettings) -> dict:
 
 def public_message(m: dict, conversation_id: str | None = None) -> dict:
     """Message fields safe to send to the browser (photos as same-origin URLs)."""
-    out = {"index": m["message_index"], "role": m["role"], "content": m["content"]}
+    created = m.get("created_at")
+    out = {"index": m["message_index"], "role": m["role"], "content": m["content"],
+           "time": bubbles.clock(created), "day": bubbles.day_key(created), "day_label": bubbles.day_label(created)}
+    if m["role"] == "assistant":
+        out["bubbles"] = bubbles.bubbles(m["content"])
+        if m.get("basis"):
+            out["basis"] = m["basis"]
     if m.get("images"):
         out["images"] = [{"url": f"/images/{ref['id']}", "w": ref.get("w"), "h": ref.get("h"),
                           "g": ref.get("g", 0)} for ref in m["images"]]
@@ -310,8 +322,12 @@ class ConversationService:
             raise ChatError("bad_image", MSG_BAD_IMAGE, 400)
         return ids
 
-    def send(self, user_id: str, conversation_id: str, content, image_ids: list | None = None) -> dict:
-        """image_ids: ids returned by stage_upload (each photo uses one more question)."""
+    def send(self, user_id: str, conversation_id: str, content, image_ids: list | None = None,
+             on_event=None) -> dict:
+        """image_ids: ids returned by stage_upload (each photo uses one more question).
+        on_event(kind, data): progress for streaming — "user" (stored), "status",
+        "sentence" (each finished sentence of the reply while it is written)."""
+        emit = on_event or (lambda kind, data: None)
         image_ids = self.check_images(image_ids)
         text = self.validate(content, allow_empty=bool(image_ids))
         conv = self.get(user_id, conversation_id)
@@ -342,6 +358,7 @@ class ConversationService:
                 if uploads:
                     message["images"] = [{"id": d["_id"], "w": d.get("width"), "h": d.get("height"), "g": g}
                                          for g, parts in enumerate(uploads) for d in parts]
+                    emit("status", {"stage": "reading_photos"})
                     reading = self._read_images(user_id, conversation_id, uploads)
                     if reading:
                         message["image_text"] = reading
@@ -351,8 +368,10 @@ class ConversationService:
                 # 1) Persist the user's message first — an AI failure must never lose it.
                 stored = self.repo.append_messages(user_id, conversation_id, [message],
                                                    conversation_updates=updates)
+                emit("user", {"user_message": public_message(stored[0], conversation_id),
+                              "conversation_id": conversation_id})
                 # 2) Exactly one reply request.
-                result = self._reply(user_id, conv, stored[0])
+                result = self._reply(user_id, conv, stored[0], on_event=on_event)
             except Exception:
                 self._refund(user_id, day, questions)
                 raise
@@ -556,21 +575,30 @@ class ConversationService:
                          user_message=public_message(user_message, conversation_id),
                          conversation_id=conversation_id)
 
-    def _reply(self, user_id: str, conv: dict, user_message: dict) -> dict:
+    def _reply(self, user_id: str, conv: dict, user_message: dict, on_event=None) -> dict:
         conversation_id = conv["id"]
         system, messages, philosopher, raw = self._context(user_id, conv)
         if not raw or raw[-1]["role"] != "user":
             raise ChatError("nothing_to_retry", MSG_NOTHING_TO_RETRY, 409)
         # The first answer also carries a short title — inside the same request.
         want_title = user_message["message_index"] == 0 and conv.get("title_source") != "user"
+        stream = bubbles.SentenceStream(lambda s: on_event("sentence", {"text": s})) if on_event else None
         try:
             reply = self.provider.reply(system=system, messages=messages, philosopher=philosopher,
                                         max_tokens=self.settings.max_output_tokens,
-                                        want_title=want_title)
+                                        want_title=want_title,
+                                        **({"on_text": stream.feed} if stream else {}))
         except AIError as exc:
-            raise self._fail(user_id, conversation_id, user_message, exc.reason,
-                             getattr(exc, "usage", None),
-                             billed=exc.reason != "missing_api_key") from None
+            if exc.reason != "refusal":
+                raise self._fail(user_id, conversation_id, user_message, exc.reason,
+                                 getattr(exc, "usage", None),
+                                 billed=exc.reason != "missing_api_key") from None
+            log.info("reply declined by the API conv=%s", conversation_id)
+            reply = AIReply(text=MSG_REFUSAL_REPLY, provider=self.provider.name,
+                            model=getattr(self.provider, "model", None) or self.provider.name,
+                            usage=getattr(exc, "usage", None) or AIUsage(), stop_reason="refusal")
+        if stream:
+            stream.finish(reply.text)  # whatever the stream hadn't finished yet
         increments = _usage_increments(self.provider, reply.usage, model=reply.model,
                                        price_overrides=self.settings.price_overrides)
         updates = {"reply_state": REPLY_DONE}
@@ -587,6 +615,7 @@ class ConversationService:
                 "output_tokens": reply.usage.output_tokens if self.provider.is_billable else None,
                 "cache_read_input_tokens": reply.usage.cache_read_input_tokens if self.provider.is_billable else None,
                 "controller_version": conv.get("controller_version", self.settings.controller_version),
+                **({"refused": True} if reply.stop_reason == "refusal" else {}),
             }], conversation_updates=updates,
                 usage_increments=increments,
                 expect_count=user_message["message_index"] + 1)
@@ -710,6 +739,53 @@ class ConversationService:
     def delete(self, user_id: str, conversation_id: str) -> bool:
         """Permanent delete (messages and photos too)."""
         return self.repo.delete_conversation(user_id, conversation_id)
+
+    # ---- info button: why this reply sounds like its philosopher -----------------------
+    def basis(self, user_id: str, conversation_id: str, message_index) -> dict:
+        """The note behind a reply's info button. Written on first request by the light
+        model (uses one daily question), then stored on the message and free to reopen."""
+        conv = self.get(user_id, conversation_id)
+        if not isinstance(message_index, int) or message_index < 1:
+            raise ChatError("not_found", MSG_NOT_FOUND, 404)
+        pair = self.repo.get_messages(user_id, conversation_id, min_index=message_index - 1,
+                                      before_index=message_index + 1)
+        reply = next((m for m in pair if m["message_index"] == message_index), None)
+        asked = next((m for m in pair if m["message_index"] == message_index - 1), None)
+        if reply is None or reply["role"] != "assistant":
+            raise ChatError("not_found", MSG_NOT_FOUND, 404)
+        if reply.get("basis"):
+            return {"basis": reply["basis"], "charged": False, "daily": self.daily(user_id)}
+        philosopher = get_philosopher(conv["philosopher_id"])
+        with self._replying.hold(f"basis:{user_id}/{conversation_id}/{message_index}") as acquired:
+            if not acquired:
+                raise ChatError("in_progress", MSG_PENDING, 409)
+            day, used = self._reserve(user_id, 1)
+            try:
+                asked_text = (asked or {}).get("content") or ""
+                if asked and asked.get("image_text"):
+                    asked_text += f"\n[보낸 사진 내용]\n{asked['image_text']}"
+                prompt = prompts.build_basis_prompt(philosopher=philosopher, user_text=asked_text,
+                                                    reply_text=reply["content"])
+                note = self.provider.explain(system=prompts.BASIS_SYSTEM, prompt=prompt,
+                                             max_tokens=BASIS_MAX_TOKENS)
+            except (AIError, NotImplementedError) as exc:
+                self._refund(user_id, day, 1)
+                usage = getattr(exc, "usage", None)
+                if usage and self.provider.is_billable:
+                    self._track_usage(user_id, conversation_id, {
+                        **_usage_increments(self.provider, usage, vision=True, failed=True,
+                                            model=getattr(self.provider, "light_model", None),
+                                            price_overrides=self.settings.price_overrides),
+                        "vision_calls": 0, "basis_calls": 1})
+                raise ChatError("basis_failed", MSG_BASIS_FAILED, 502) from None
+            text = prompts.clean_basis(note.text)
+            self.repo.set_message_fields(user_id, conversation_id, message_index, {"basis": text})
+            increments = _usage_increments(self.provider, note.usage, vision=True, model=note.model,
+                                           price_overrides=self.settings.price_overrides)
+            if self.provider.is_billable:
+                increments.update(vision_calls=0, basis_calls=1)
+            self._track_usage(user_id, conversation_id, increments)
+            return {"basis": text, "charged": True, "daily": daily_status(used, self.settings.daily_limit)}
 
     # ---- trash ---------------------------------------------------------------------
     def trash(self, user_id: str, conversation_id: str) -> None:

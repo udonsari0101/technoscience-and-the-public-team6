@@ -420,6 +420,11 @@ class FirestoreRepository(Repository):
                 raise
 
     @_guard
+    def set_message_fields(self, user_id, conversation_id, message_index, fields):
+        self._conv_ref(user_id, conversation_id).collection("messages").document(
+            message_doc_id(message_index)).update(dict(fields), timeout=15)
+
+    @_guard
     def set_conversation_fields(self, user_id, conversation_id, fields):
         try:
             self._conv_ref(user_id, conversation_id).update(dict(fields))

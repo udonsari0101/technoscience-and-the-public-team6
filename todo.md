@@ -153,6 +153,17 @@
 - [x] 검증: pytest 267, 브라우저 E2E(Chromium·WebKit) 30/31(WebKit 뷰포트 경고 1개는 앱 오류 아님), ui_check 44/44, device_check 65/65, a11y 0, 로컬 smoke 28/28, live(Haiku 사진 읽기 + Sonnet 답변)
 - [x] production(6004120): 사진 업로드·전송·표시·휴지통·영구 삭제 10/10, smoke 29/29(실제 API), 관리자 크레딧 서비스 밖 사용액 $0.40으로 갱신
 
+## 답변 속도 · 말풍선 · 근거 보기 · 시간 (사용자 요청)
+- [x] 응답 속도: Firestore·Render 같은 지역(asia-southeast1/singapore) 확인 → 대기의 대부분은 모델 생성. 같은 요청 1개를 스트리밍(SSE)해 문장이 끝나는 대로 표시, 생성·저장은 별도 thread(연결이 끊겨도 저장)
+- [x] cold start 방지: GitHub Actions `keep-warm`이 10분마다 /health
+- [x] 답변을 문장 말풍선으로 순서대로(0.8~1.7초 간격, 타이핑 표시), 재생 중 입력·첨부 잠금, 새로고침해도 같은 말풍선(서버·JS 같은 규칙)
+- [x] ⓘ 근거 보기: 누를 때만 Haiku로 개념/연결/질문 3줄 생성, 처음 한 번 질문 1개 차감(실패 시 환불), 메시지에 저장해 다시 열면 무료
+- [x] 메시지 시간·날짜 구분선(서울 시간), 오늘 남은 질문 막대(줄어드는 애니메이션·사진 첨부 시 차감 미리보기)
+- [x] 답변 더 짧게: 50/100/150자, 한 문장 35자 안팎
+- [x] 버그: Anthropic 안전 거절(출력 0 token)이 "답변을 가져오지 못했어요"+다시 시도로 보이던 문제 → 짧은 거절 답으로 저장(재시도·재과금 없음). 원인: 문자열 출력 퍼즐 메시지
+- [x] 보안 테스트 구조(사용자 비용 원칙): unit / mock LLM(`test_security_mock.py`) / live 5개(`RUN_LIVE_LLM_SECURITY_TESTS=true`일 때만, 호출 수·예상 비용 출력). live 1회 실행 5/5 통과, 약 $0.042
+- [x] 검증: pytest 286(+live 5 skip), 브라우저 E2E(Chromium·WebKit) 스트리밍·잠금·시간·막대·근거 26/26
+
 ## UI / UX
 - [x] Theme: System / Light / Dark (localStorage, headless 브라우저로 저장·해제 확인)
 - [x] Animation (page/message/sheet/dialog/typing/press + prefers-reduced-motion)

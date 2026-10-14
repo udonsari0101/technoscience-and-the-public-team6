@@ -220,6 +220,11 @@ class Repository:
         """Plain field update (no-op if the conversation no longer exists)."""
         raise NotImplementedError
 
+    def set_message_fields(self, user_id: str, conversation_id: str, message_index: int,
+                           fields: dict) -> None:
+        """Plain field update on one message (e.g. its info-button note)."""
+        raise NotImplementedError
+
     # ---- daily question allowance ---------------------------------------
     def reserve_daily_message(self, user_id: str, day: str, limit: int, count: int = 1) -> int | None:
         """Atomically use `count` questions of `day`. Returns the new total, or

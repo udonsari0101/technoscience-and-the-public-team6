@@ -51,6 +51,15 @@ class ImageReading:
     usage: AIUsage = field(default_factory=AIUsage)
 
 
+@dataclass
+class Explanation:
+    """Why a reply sounds like its philosopher (the info button), from the light model."""
+    text: str
+    provider: str
+    model: str
+    usage: AIUsage = field(default_factory=AIUsage)
+
+
 class AIProvider:
     name = "abstract"
     is_billable = False  # True when calls cost money (counted as api_calls)
@@ -62,7 +71,11 @@ class AIProvider:
         raise NotImplementedError
 
     def reply(self, *, system: str, messages: list[dict], philosopher: dict,
-              max_tokens: int, want_title: bool = False) -> AIReply:
+              max_tokens: int, want_title: bool = False, on_text=None) -> AIReply:
+        """on_text(delta): called with text as it is generated (streaming), if given."""
+        raise NotImplementedError
+
+    def explain(self, *, system: str, prompt: str, max_tokens: int) -> Explanation:
         raise NotImplementedError
 
     def summarize(self, *, system: str, prompt: str, philosopher: dict,
