@@ -39,6 +39,8 @@ class MemoryRepository(Repository):
         self.messages: dict[tuple[str, str], dict[str, dict]] = {}
         self.memory: dict[str, dict] = {}
         self.usage_days: dict[str, dict] = {}
+        self.usage_totals: dict[str, dict] = {}
+        self.billing: dict = {}
 
     # ---- users -----------------------------------------------------------
     def create_user(self, *, user_id, name, username, username_normalized, password_hash, role=None):
@@ -90,12 +92,24 @@ class MemoryRepository(Repository):
         rows.sort(key=lambda r: r["created_at"], reverse=True)
         return rows[:limit]
 
-    def record_usage_day(self, day, increments):
+    def record_usage_day(self, day, increments, total_key="all"):
         with self._lock:
-            row = self.usage_days.setdefault(day, {})
-            for key, value in (increments or {}).items():
-                if value:
-                    row[key] = row.get(key, 0) + value
+            for row in (self.usage_days.setdefault(day, {}), self.usage_totals.setdefault(total_key, {})):
+                for key, value in (increments or {}).items():
+                    if value:
+                        row[key] = row.get(key, 0) + value
+
+    def get_usage_total(self, key="all"):
+        with self._lock:
+            return copy.deepcopy(self.usage_totals.get(key, {}))
+
+    def get_billing_settings(self):
+        with self._lock:
+            return copy.deepcopy(self.billing)
+
+    def set_billing_settings(self, data):
+        with self._lock:
+            self.billing.update(copy.deepcopy(data), updated_at=utcnow())
 
     def get_usage_days(self, days):
         with self._lock:

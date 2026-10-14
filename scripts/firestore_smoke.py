@@ -99,10 +99,15 @@ def main() -> int:
         step("refund_daily_message", lambda: repo.refund_daily_message(user_id, "2000-01-01"))
         assert repo.get_daily_usage(user_id, "2000-01-01") == 1
         # service-wide daily usage (index-free reads) — uses a throw-away key, removed below
-        step("record_usage_day", lambda: repo.record_usage_day(usage_key, {"replies": 2, "api_calls": 3}))
-        repo.record_usage_day(usage_key, {"replies": 1})
+        # the running total goes to a throw-away key too: never touch the real "all" total
+        step("record_usage_day", lambda: repo.record_usage_day(
+            usage_key, {"replies": 2, "api_calls": 3, "cost_micro_usd": 2860}, total_key=usage_key))
+        repo.record_usage_day(usage_key, {"replies": 1}, total_key=usage_key)
         rows = step("get_usage_days", lambda: repo.get_usage_days([usage_key]))
-        assert rows == [{"day": usage_key, "replies": 3, "api_calls": 3}], rows
+        assert rows == [{"day": usage_key, "replies": 3, "api_calls": 3, "cost_micro_usd": 2860}], rows
+        total = step("get_usage_total", lambda: repo.get_usage_total(usage_key))
+        assert total == {"replies": 3, "api_calls": 3, "cost_micro_usd": 2860}, total
+        step("get_billing_settings (read only)", lambda: repo.get_billing_settings())
         listed_users = step("list_users", lambda: repo.list_users(500))
         mine = next(u for u in listed_users if u["id"] == user_id)
         assert "password_hash" not in mine and mine["daily_usage"]["count"] == 1
@@ -124,6 +129,7 @@ def main() -> int:
         client.recursive_delete(client.collection("users").document(user_id))
         client.collection("username_index").document(username).delete()
         client.collection("usage_daily").document(usage_key).delete()
+        client.collection("usage_totals").document(usage_key).delete()
         leftover = client.collection("users").document(user_id).get().exists or \
             client.collection("username_index").document(username).get().exists
         print("cleanup:", "LEFTOVER DATA!" if leftover else "ok (no test data left)")

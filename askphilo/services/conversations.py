@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from ..ai import AIError, AIProvider
-from ..ai import prompts
+from ..ai import pricing, prompts
 from ..ai.prompts import clean_title
 from ..data import Conflict, DataError, Repository
 from ..data.base import SCHEMA_VERSION, utcnow
@@ -81,6 +81,7 @@ class ChatSettings:
     max_user_chars: int = 2000
     reply_grace_seconds: int = 60  # a pending reply younger than this is "in progress"
     daily_limit: int = 200  # questions per user per KST day
+    price_overrides: dict | None = None  # ANTHROPIC_PRICE_*_PER_MTOK, if set
 
     @classmethod
     def from_config(cls, cfg) -> "ChatSettings":
@@ -97,6 +98,7 @@ class ChatSettings:
             max_user_chars=cfg["MAX_USER_MESSAGE_CHARS"],
             reply_grace_seconds=cfg["ANTHROPIC_TIMEOUT_SECONDS"] + 15,
             daily_limit=cfg["CHAT_MESSAGES_PER_DAY"],
+            price_overrides=pricing.overrides_from_config(cfg) or None,
         )
 
 
@@ -129,10 +131,16 @@ def public_message(m: dict) -> dict:
 
 
 def _usage_increments(provider: AIProvider, usage, *, summary: bool = False,
-                      failed: bool = False) -> dict:
+                      failed: bool = False, model: str | None = None,
+                      price_overrides: dict | None = None) -> dict:
     if not provider.is_billable:
         return {"mock_calls": 1}
     inc = {"api_calls": 1}
+    # What this call cost, priced with the model that actually answered.
+    model = model or getattr(provider, "summary_model" if summary else "model", None)
+    cost = pricing.cost_micro_usd(model, usage, price_overrides)
+    if cost:
+        inc["cost_micro_usd"] = cost
     if failed:
         inc["failed_calls"] = 1
     if summary:
@@ -370,7 +378,8 @@ class ConversationService:
         try:
             self.repo.set_conversation_fields(user_id, conversation_id, {"reply_state": REPLY_FAILED})
             if billed and self.provider.is_billable:
-                failed = _usage_increments(self.provider, usage, failed=True)
+                failed = _usage_increments(self.provider, usage, failed=True,
+                                           price_overrides=self.settings.price_overrides)
                 self.repo.add_usage(user_id, conversation_id, failed)
                 self._track_day(failed)
         except DataError:
@@ -393,6 +402,8 @@ class ConversationService:
             raise self._fail(user_id, conversation_id, user_message, exc.reason,
                              getattr(exc, "usage", None),
                              billed=exc.reason != "missing_api_key") from None
+        increments = _usage_increments(self.provider, reply.usage, model=reply.model,
+                                       price_overrides=self.settings.price_overrides)
         updates = {"reply_state": REPLY_DONE}
         new_title = clean_title(reply.title) if want_title else None
         if new_title:
@@ -408,7 +419,7 @@ class ConversationService:
                 "cache_read_input_tokens": reply.usage.cache_read_input_tokens if self.provider.is_billable else None,
                 "controller_version": conv.get("controller_version", self.settings.controller_version),
             }], conversation_updates=updates,
-                usage_increments=_usage_increments(self.provider, reply.usage),
+                usage_increments=increments,
                 expect_count=user_message["message_index"] + 1)
         except Conflict:
             # Someone else answered or wrote meanwhile: keep the order intact.
@@ -417,7 +428,7 @@ class ConversationService:
         except DataError as exc:
             raise self._fail(user_id, conversation_id, user_message, type(exc).__name__,
                              reply.usage, billed=True) from None
-        self._track_day(_usage_increments(self.provider, reply.usage), replies=1)
+        self._track_day(increments, replies=1)
         assistant_message = stored[0]
         count = assistant_message["message_index"] + 1
         return {
@@ -479,18 +490,21 @@ class ConversationService:
                 transcript=chunk, max_tokens=self.settings.summary_max_output_tokens)
         except AIError as exc:
             log.warning("summary call failed conv=%s reason=%s", conversation_id, exc.reason)
-            usage = (_usage_increments(self.provider, getattr(exc, "usage", None), summary=True, failed=True)
+            usage = (_usage_increments(self.provider, getattr(exc, "usage", None), summary=True, failed=True,
+                                       price_overrides=self.settings.price_overrides)
                      if self.provider.is_billable else None)
             self._defer_summary(user_id, conversation_id, count + step, usage)
             if usage:
                 self._track_day(usage)
             return False
-        self._track_day(_usage_increments(self.provider, result.usage, summary=True))
+        summary_increments = _usage_increments(self.provider, result.usage, summary=True, model=result.model,
+                                               price_overrides=self.settings.price_overrides)
+        self._track_day(summary_increments)
         try:
             ok = self.repo.update_summary(
                 user_id, conversation_id, expected_through_index=through, summary=result.summary,
                 through_index=new_through,
-                usage_increments=_usage_increments(self.provider, result.usage, summary=True),
+                usage_increments=summary_increments,
                 title=clean_title(result.title))
             if ok and result.user_memory is not None:
                 merged = {k: list((old_memory or {}).get(k) or []) for k in ("relationship_values", "preferences")}

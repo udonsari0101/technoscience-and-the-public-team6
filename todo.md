@@ -133,6 +133,14 @@
 - [x] Sonnet 5.5 `between_tools`에서 thinking block만 오고 빈 답변이 되는 문제 → thinking headroom 추가, 같은 질문 3회 정상
 - [x] `scripts/live_eval.py`: 평가 사용자 생성(하루 질문 한도), 상황별 길이 기준, T1~T5·L1~L3 시나리오 추가
 
+## API 크레딧 조회 (사용자 요청)
+- [x] 조사: API에 잔액 조회 endpoint 없음(공식 문서 확인). Admin API Cost API는 Admin 키 필요 → 키 발급 계정 접근 불가라 사용 불가
+- [x] 호출마다 비용 계산·저장: 응답 token × 모델별 공식 단가(`ai/pricing.py`, Opus/Sonnet/Haiku 5.5·Fable 5.1, Haiku 100K 초과 단가), `cost_micro_usd` 정수로 대화 usage·`usage_daily`·누적 `usage_totals/all`(batch)에 기록. 실패 과금·요약 포함
+- [x] 대시보드 'API 크레딧': 충전 금액·서비스 밖 사용액 입력(`settings/billing`, admin만, CSRF), 남은 금액·평균 비용·남은 답변 수. 월 예산 환경변수는 제거
+- [x] 일별·사용자별 비용 열, 실제 API 모드일 때 모델 단가 표시
+- [x] 테스트(가격 계산, 기록, 화면, 입력 검증, 권한) + 실제 Firestore smoke(누적 문서는 임시 key로만)
+- [x] 서비스 밖 사용액 추정: 지금까지 live 평가(Sonnet 5.5) 약 $0.28 — 27회 $0.118 + 16회 $0.072 + 16회 $0.063 + 디버그 4회 약 $0.02
+
 ## UI / UX
 - [x] Theme: System / Light / Dark (localStorage, headless 브라우저로 저장·해제 확인)
 - [x] Animation (page/message/sheet/dialog/typing/press + prefers-reduced-motion)

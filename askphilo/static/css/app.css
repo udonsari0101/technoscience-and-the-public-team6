@@ -700,6 +700,52 @@ p a,
   color: var(--text-3);
   font-size: 13px;
 }
+/* API credit (admin) */
+.credit-card {
+  padding: 18px;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+.credit-value {
+  margin-top: 4px;
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.credit-value span {
+  margin-left: 6px;
+  color: var(--text-3);
+  font-size: 16px;
+  font-weight: 600;
+}
+.credit-card .daily-meter {
+  margin-top: 12px;
+}
+.credit-card.is-low .credit-value {
+  color: var(--danger);
+}
+.credit-card.is-low .daily-meter::-webkit-progress-value {
+  background: var(--danger-fill);
+}
+.credit-card.is-low .daily-meter::-moz-progress-bar {
+  background: var(--danger-fill);
+}
+.credit-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  align-items: end;
+  gap: 12px;
+  margin-top: 12px;
+}
+.credit-save {
+  min-height: 52px; /* same height as the inputs */
+}
+@media (max-width: 640px) {
+  .credit-form {
+    grid-template-columns: 1fr;
+  }
+}
 .table-wrap {
   overflow-x: auto;
   border-radius: var(--radius-lg);

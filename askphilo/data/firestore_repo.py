@@ -162,12 +162,31 @@ class FirestoreRepository(Repository):
 
     # ---- service-wide daily usage ------------------------------------------------------
     @_guard
-    def record_usage_day(self, day, increments):
+    def record_usage_day(self, day, increments, total_key="all"):
         from google.cloud import firestore as gcf
 
         updates = {k: gcf.Increment(v) for k, v in (increments or {}).items() if v}
         if updates:
-            self.client.collection("usage_daily").document(day).set(updates, merge=True)
+            batch = self.client.batch()  # the day and the running total move together
+            batch.set(self.client.collection("usage_daily").document(day), updates, merge=True)
+            batch.set(self.client.collection("usage_totals").document(total_key), updates, merge=True)
+            batch.commit(timeout=20)
+
+    @_guard
+    def get_usage_total(self, key="all"):
+        snap = self.client.collection("usage_totals").document(key).get(timeout=20)
+        return snap.to_dict() or {} if snap.exists else {}
+
+    # ---- billing settings (admin) ----------------------------------------------------
+    @_guard
+    def get_billing_settings(self):
+        snap = self.client.collection("settings").document("billing").get(timeout=20)
+        return snap.to_dict() or {} if snap.exists else {}
+
+    @_guard
+    def set_billing_settings(self, data):
+        self.client.collection("settings").document("billing").set(
+            {**data, "updated_at": utcnow()}, merge=True)
 
     @_guard
     def get_usage_days(self, days):

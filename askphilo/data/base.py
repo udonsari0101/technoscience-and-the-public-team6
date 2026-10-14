@@ -99,8 +99,21 @@ class Repository:
         raise NotImplementedError
 
     # ---- service-wide daily usage (admin dashboard) ----------------------
-    def record_usage_day(self, day: str, increments: dict) -> None:
-        """Add counters to usage_daily/{day} (KST date)."""
+    def record_usage_day(self, day: str, increments: dict, total_key: str = "all") -> None:
+        """Add counters to usage_daily/{day} (KST date) and, in the same write,
+        to the running total usage_totals/{total_key}."""
+        raise NotImplementedError
+
+    def get_usage_total(self, key: str = "all") -> dict:
+        """Running totals since usage was first recorded ({} if none)."""
+        raise NotImplementedError
+
+    # ---- billing settings (admin) ------------------------------------------
+    def get_billing_settings(self) -> dict:
+        """settings/billing: {"credit_usd", "outside_spend_usd", ...} ({} if unset)."""
+        raise NotImplementedError
+
+    def set_billing_settings(self, data: dict) -> None:
         raise NotImplementedError
 
     def get_usage_days(self, days: list[str]) -> list[dict]:

@@ -52,6 +52,17 @@ class BillableCountingProvider(CountingProvider):
         return r
 
 
+class SonnetBillableProvider(BillableCountingProvider):
+    """Billable test provider that reports a real, priced model id."""
+
+    model = "claude-sonnet-5-5"
+
+    def reply(self, **kwargs):
+        r = super().reply(**kwargs)
+        r.model = self.model
+        return r
+
+
 class FailingProvider(AIProvider):
     name = "anthropic"
     is_billable = True

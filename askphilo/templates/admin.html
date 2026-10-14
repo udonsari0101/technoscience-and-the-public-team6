@@ -3,6 +3,7 @@
 {% block title %}관리자 대시보드 · AskPhilo{% endblock %}
 {% macro n(value) %}{{ "{:,}".format(value or 0) }}{% endmacro %}
 {% macro dt(value) %}{{ value|relative_time if value else '—' }}{% endmacro %}
+{% macro money(value) %}{% if value and value < 0.01 and value > -0.01 %}${{ "%.4f"|format(value) }}{% else %}${{ "{:,.2f}".format(value or 0) }}{% endif %}{% endmacro %}
 {% block body %}
 <header class="topbar admin-topbar">
   {{ brand() }}
@@ -17,33 +18,50 @@
 <main id="main" class="page page-admin page-enter">
   <h1 class="page-title admin-title">관리자 대시보드</h1>
 
+  <section class="admin-section" id="credit" aria-labelledby="credit-title">
+    <h2 id="credit-title" class="admin-h2">API 크레딧</h2>
+    <div class="credit-card{% if credit.remaining is not none and credit.credit and credit.remaining < credit.credit * 0.1 %} is-low{% endif %}">
+      {% if credit.credit is not none %}
+      <p class="stat-label">남은 금액</p>
+      <p class="credit-value">{{ money(credit.remaining) }}<span>/ {{ money(credit.credit) }}</span></p>
+      <progress class="daily-meter" value="{{ [credit.remaining, 0]|max }}" max="{{ credit.credit or 1 }}"
+                aria-label="남은 크레딧 {{ money(credit.remaining) }}, 충전 {{ money(credit.credit) }}">{{ credit.remaining }}</progress>
+      <p class="stat-sub">사용 {{ money(credit.used) }} = 서비스 {{ money(credit.service) }} + 서비스 밖 {{ money(credit.outside) }}{% if credit.per_reply %} · 답변 1개 평균 {{ money(credit.per_reply) }}{% endif %}{% if credit.replies_left is not none %} · 지금 평균이면 약 {{ n(credit.replies_left) }}개 더{% endif %}</p>
+      {% else %}
+      <p class="stat-label">남은 금액</p>
+      <p class="credit-value stat-muted">—</p>
+      <p class="stat-sub">충전한 금액을 아래에 입력하면 남은 금액이 보여요.</p>
+      {% endif %}
+    </div>
+    <form class="credit-form" method="post" action="{{ url_for('admin.billing') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field">
+        <label for="credit_usd">충전 금액 ($)</label>
+        <input id="credit_usd" name="credit_usd" type="text" inputmode="decimal" required autocomplete="off"
+               value="{{ '%.2f'|format(credit.credit) if credit.credit is not none else '' }}" placeholder="20.00">
+      </div>
+      <div class="field">
+        <label for="outside_spend_usd">서비스 밖에서 쓴 금액 ($)</label>
+        <input id="outside_spend_usd" name="outside_spend_usd" type="text" inputmode="decimal" autocomplete="off"
+               value="{{ '%.2f'|format(credit.outside) }}" placeholder="0.00">
+      </div>
+      <button class="btn btn-secondary credit-save" type="submit">저장</button>
+    </form>
+    <p class="admin-note">API에는 잔액 조회 기능이 없어서, AskPhilo가 호출마다 token 수 × 공식 단가로 계산해 더한 금액이에요{% if price %} ({{ model }}: 1M token당 입력 ${{ price.input }} · 출력 ${{ price.output }} · 캐시 읽기 ${{ price.cache_read }}){% endif %}. 같은 키를 서비스 밖(테스트 등)에서 쓰면 그 금액을 '서비스 밖에서 쓴 금액'에 더해 주세요.</p>
+  </section>
+
   <section class="admin-section" aria-labelledby="usage-title">
     <h2 id="usage-title" class="admin-h2">API 사용량</h2>
     <div class="stat-grid">
       <div class="stat">
         <p class="stat-label">오늘 ({{ today }})</p>
         <p class="stat-value">{{ n(today_totals.replies) }}<span>답변</span></p>
-        <p class="stat-sub">API 호출 {{ n(today_totals.api_calls) }} · 요약 {{ n(today_totals.summary_calls) }} · 실패 {{ n(today_totals.failed_calls) }}</p>
+        <p class="stat-sub">비용 {{ money(usd(today_totals.cost_micro_usd)) }} · API 호출 {{ n(today_totals.api_calls) }} · 요약 {{ n(today_totals.summary_calls) }} · 실패 {{ n(today_totals.failed_calls) }}</p>
       </div>
       <div class="stat">
         <p class="stat-label">이번 달 ({{ month }})</p>
         <p class="stat-value">{{ n(month_totals.replies) }}<span>답변</span></p>
-        <p class="stat-sub">API 호출 {{ n(month_totals.api_calls) }} · 입력 {{ n(month_totals.input_tokens + month_totals.summary_input_tokens) }} · 출력 {{ n(month_totals.output_tokens + month_totals.summary_output_tokens) }} · 캐시 읽기 {{ n(month_totals.cache_read_input_tokens) }} token</p>
-      </div>
-      <div class="stat">
-        <p class="stat-label">이번 달 예상 비용</p>
-        {% if month_cost is not none %}
-        <p class="stat-value">${{ "%.2f"|format(month_cost) }}{% if budget %}<span>/ ${{ "%.2f"|format(budget) }}</span>{% endif %}</p>
-        {% if remaining_budget is not none %}
-        <p class="stat-sub{% if remaining_budget < budget * 0.1 %} is-warn{% endif %}">남은 예산 ${{ "%.2f"|format(remaining_budget) }}</p>
-        {% if budget %}<progress class="daily-meter" value="{{ [remaining_budget, 0]|max }}" max="{{ budget }}" aria-label="남은 예산">{{ remaining_budget }}</progress>{% endif %}
-        {% else %}
-        <p class="stat-sub">월 예산을 정하면 남은 금액이 보여요 (ANTHROPIC_MONTHLY_BUDGET_USD)</p>
-        {% endif %}
-        {% else %}
-        <p class="stat-value stat-muted">—</p>
-        <p class="stat-sub">Render 환경변수에 token 단가(ANTHROPIC_PRICE_*_PER_MTOK)와 월 예산을 넣으면 계산돼요</p>
-        {% endif %}
+        <p class="stat-sub">비용 {{ money(usd(month_totals.cost_micro_usd)) }} · API 호출 {{ n(month_totals.api_calls) }} · 입력 {{ n(month_totals.input_tokens + month_totals.summary_input_tokens) }} · 출력 {{ n(month_totals.output_tokens + month_totals.summary_output_tokens) }} · 캐시 읽기 {{ n(month_totals.cache_read_input_tokens) }} token</p>
       </div>
       <div class="stat">
         <p class="stat-label">서비스 상한</p>
@@ -56,7 +74,6 @@
         <p class="stat-sub">{{ model }}{% if ai_mode != 'anthropic' %} · 실제 API를 호출하지 않아요{% endif %}</p>
       </div>
     </div>
-    <p class="admin-note">계정의 실제 잔액은 Anthropic Console의 Billing에서 확인할 수 있어요. 여기 숫자는 AskPhilo가 기록한 사용량이에요.</p>
   </section>
 
   <section class="admin-section" aria-labelledby="days-title">
@@ -64,10 +81,10 @@
     {% if days %}
     <div class="table-wrap">
       <table class="admin-table">
-        <thead><tr><th scope="col">날짜</th><th scope="col">답변</th><th scope="col">API 호출</th><th scope="col">입력</th><th scope="col">출력</th><th scope="col">캐시 읽기</th><th scope="col">요약</th><th scope="col">실패</th></tr></thead>
+        <thead><tr><th scope="col">날짜</th><th scope="col">답변</th><th scope="col">비용</th><th scope="col">API 호출</th><th scope="col">입력</th><th scope="col">출력</th><th scope="col">캐시 읽기</th><th scope="col">요약</th><th scope="col">실패</th></tr></thead>
         <tbody>
           {% for d in days %}
-          <tr><th scope="row">{{ d.day }}</th><td>{{ n(d.replies) }}</td><td>{{ n(d.api_calls) }}</td>
+          <tr><th scope="row">{{ d.day }}</th><td>{{ n(d.replies) }}</td><td>{{ money(usd(d.cost_micro_usd)) }}</td><td>{{ n(d.api_calls) }}</td>
             <td>{{ n((d.input_tokens or 0) + (d.summary_input_tokens or 0)) }}</td>
             <td>{{ n((d.output_tokens or 0) + (d.summary_output_tokens or 0)) }}</td>
             <td>{{ n(d.cache_read_input_tokens) }}</td><td>{{ n(d.summary_calls) }}</td><td>{{ n(d.failed_calls) }}</td></tr>
@@ -84,14 +101,15 @@
     <h2 id="users-title" class="admin-h2">사용자 {{ users|length }}명</h2>
     <div class="table-wrap">
       <table class="admin-table">
-        <thead><tr><th scope="col">이름</th><th scope="col">아이디</th><th scope="col">가입</th><th scope="col">최근 로그인</th><th scope="col">대화</th><th scope="col">메시지</th><th scope="col">오늘 질문</th><th scope="col">API 호출</th><th scope="col">token</th></tr></thead>
+        <thead><tr><th scope="col">이름</th><th scope="col">아이디</th><th scope="col">가입</th><th scope="col">최근 로그인</th><th scope="col">대화</th><th scope="col">메시지</th><th scope="col">오늘 질문</th><th scope="col">API 호출</th><th scope="col">비용</th><th scope="col">token</th></tr></thead>
         <tbody>
           {% for u in users %}
           <tr>
             <th scope="row">{{ u.name }}{% if u.role == 'admin' %} <span class="pill pill-sm">관리자</span>{% endif %}</th>
             <td>{{ u.username }}</td><td>{{ dt(u.created_at) }}</td><td>{{ dt(u.last_login_at) }}</td>
             <td>{{ n(u.conversations) }}</td><td>{{ n(u.messages) }}</td>
-            <td>{{ n(u.today_questions) }} / {{ n(daily_limit) }}</td><td>{{ n(u.api_calls) }}</td><td>{{ n(u.tokens) }}</td>
+            <td>{{ n(u.today_questions) }} / {{ n(daily_limit) }}</td><td>{{ n(u.api_calls) }}</td>
+            <td>{{ money(usd(u.cost_micro_usd)) }}</td><td>{{ n(u.tokens) }}</td>
           </tr>
           {% endfor %}
         </tbody>

@@ -126,7 +126,6 @@ def load_config(env=None) -> dict:
         "AI_REPLIES_PER_HOUR": _int(env, "AI_REPLIES_PER_HOUR", 600, minimum=1),
         # Admin dashboard cost estimate: set in Render to see the remaining budget.
         # Prices are USD per 1M tokens of the model in use (none hard-coded).
-        "ANTHROPIC_MONTHLY_BUDGET_USD": _float(env, "ANTHROPIC_MONTHLY_BUDGET_USD"),
         "ANTHROPIC_PRICE_INPUT_PER_MTOK": _float(env, "ANTHROPIC_PRICE_INPUT_PER_MTOK"),
         "ANTHROPIC_PRICE_OUTPUT_PER_MTOK": _float(env, "ANTHROPIC_PRICE_OUTPUT_PER_MTOK"),
         "ANTHROPIC_PRICE_CACHE_READ_PER_MTOK": _float(env, "ANTHROPIC_PRICE_CACHE_READ_PER_MTOK"),

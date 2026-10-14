@@ -98,7 +98,9 @@ users/{user_id}                         name, username, username_normalized, rol
 │                                       input_tokens, output_tokens, controller_version, created_at
 └── memory/profile                      relationship_values[], preferences[], updated_at
 username_index/{username_normalized}    user_id, created_at
-usage_daily/{YYYY-MM-DD}                서비스 전체 일별 사용량 (답변·API 호출·token) — 관리자 대시보드용
+usage_daily/{YYYY-MM-DD}                서비스 전체 일별 사용량 (답변·API 호출·token·비용) — 관리자 대시보드용
+usage_totals/all                        처음부터의 누적 사용량·비용 (usage_daily와 같은 batch로 갱신)
+settings/billing                        관리자가 입력한 충전 금액·서비스 밖 사용액
 ```
 
 - message 문서 ID는 0으로 채운 `message_index`라서 Firebase Console에서도 순서대로 보입니다.
@@ -350,17 +352,16 @@ Firestore 조회, AI 호출, secret 노출이 없는 가벼운 endpoint입니다
 
 **`/admin`**: `role: "admin"`인 계정만 들어갈 수 있습니다. 권한은 매 요청마다 DB에서 확인하고, 다른 사용자에게는 404를 보여줍니다. admin이 로그인하면 바로 대시보드로 이동합니다.
 
+- **API 크레딧(남은 금액):** Anthropic API에는 잔액 조회 기능이 없고(Admin API의 Cost API도 별도 Admin 키와 계정 접근이 필요), 키를 받은 계정에 들어갈 수 없는 경우가 있어서 AskPhilo가 직접 계산합니다.
+  - 매 API 호출마다 응답의 token 수 × 그 호출에 쓰인 모델의 공식 단가로 비용을 계산해 `cost_micro_usd`(100만분의 1달러, 정수)로 저장합니다. 메시지별 대화 usage, `usage_daily`, 누적 `usage_totals/all`에 같이 더합니다. 실패했지만 과금된 호출과 요약 호출도 포함합니다.
+  - 단가표는 `askphilo/ai/pricing.py`에 있습니다(공식 가격표, 2026-10-14 확인). cache write는 5분 TTL 가격, thinking token은 output에 포함됩니다. 가격이 바뀌면 이 표를 고치거나 `ANTHROPIC_PRICE_INPUT_PER_MTOK` / `_OUTPUT_` / `_CACHE_READ_` / `_CACHE_WRITE_PER_MTOK`로 덮어씁니다(모든 모델에 적용).
+  - 대시보드에서 **충전 금액**과 **서비스 밖에서 쓴 금액**(같은 키로 한 테스트 등)을 입력하면 `남은 금액 = 충전 금액 − 서비스 사용액 − 서비스 밖 사용액`, 답변 1개 평균 비용, 남은 답변 수(평균 기준)를 보여줍니다.
+  - 계산값이라 실제 잔액과 조금 다를 수 있습니다(같은 키를 다른 곳에서 쓰거나 가격이 바뀐 경우).
 - **API 사용량:**
-  - 오늘·이번 달 답변 수, API 호출, 입력/출력/캐시 token (`usage_daily` 기준)
+  - 오늘·이번 달 답변 수, 비용, API 호출, 입력/출력/캐시 token (`usage_daily` 기준)
   - 서비스 상한의 남은 횟수
-  - AI 모드와 모델
-- **예상 비용·남은 예산:** 아래 Render 환경변수를 넣으면 계산됩니다. 가격은 코드에 넣지 않습니다.
-  - `ANTHROPIC_MONTHLY_BUDGET_USD` (월 예산)
-  - `ANTHROPIC_PRICE_INPUT_PER_MTOK`, `ANTHROPIC_PRICE_OUTPUT_PER_MTOK`
-  - `ANTHROPIC_PRICE_CACHE_READ_PER_MTOK`, `ANTHROPIC_PRICE_CACHE_WRITE_PER_MTOK`
-
-  각각 사용하는 모델의 1M token당 USD입니다. Anthropic 계정의 실제 잔액은 API로 조회할 수 없으니 Console의 Billing에서 확인하세요.
-- **최근 14일 표**와 **사용자 표**(가입일, 최근 로그인, 대화·메시지 수, 오늘 질문, API 호출, token). 대화 내용과 비밀번호 관련 데이터는 불러오지 않습니다.
+  - AI 모드와 모델(실제 API일 때는 그 모델의 단가도 표시)
+- **최근 14일 표**와 **사용자 표**(가입일, 최근 로그인, 대화·메시지 수, 오늘 질문, API 호출, 비용, token). 대화 내용과 비밀번호 관련 데이터는 불러오지 않습니다.
 
 계정 관리 스크립트(로컬, Firebase JSON 필요):
 - `ADMIN_PASSWORD=... python scripts/create_admin.py --username admin`: admin 계정을 만들거나, 같은 아이디가 있으면 admin으로 바꿉니다. 비밀번호는 repository에 남기지 않습니다.
