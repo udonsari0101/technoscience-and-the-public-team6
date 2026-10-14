@@ -129,7 +129,9 @@
 - [x] mock 답변 단축(평균 약 245자 → 113자): 공감 + 관점 하나 + 질문. 상대의 잘못을 자기 탓으로 돌리는 경우 분기 추가
 - [x] 길이를 상황에 맞춘 범위로 변경(사용자 요청: 150자도 길 때가 있음). mock은 20자 이하의 짧은 말에 공감/감사 + 질문만(40~71자), 고민에는 98~128자. 긴 mock 문장 다듬음, 테스트로 범위 고정
 - [x] 검증: pytest 215 통과, ui_check 44/44, device_check 65/65, a11y 위반 0, production smoke 27/27 (751c852 배포 후, 인사 문구 순서에 맞춰 smoke 점검 수정)
-- [ ] 바뀐 prompt로 짧은 live 확인 (유료 호출이라 사용자 확인 후)
+- [x] 바뀐 prompt로 live 확인 (Sonnet 5.5, 사용자 승인): 팀원 규칙 시나리오 모두 통과. 글자 수 범위만으로는 길이가 안 지켜져 문장 수 기준으로 바꾼 뒤 재확인
+- [x] Sonnet 5.5 `between_tools`에서 thinking block만 오고 빈 답변이 되는 문제 → thinking headroom 추가, 같은 질문 3회 정상
+- [x] `scripts/live_eval.py`: 평가 사용자 생성(하루 질문 한도), 상황별 길이 기준, T1~T5·L1~L3 시나리오 추가
 
 ## UI / UX
 - [x] Theme: System / Light / Dark (localStorage, headless 브라우저로 저장·해제 확인)

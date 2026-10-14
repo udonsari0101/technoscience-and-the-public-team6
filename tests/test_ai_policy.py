@@ -116,6 +116,8 @@ def test_thinking_off_models_clamp_effort():
     p.reply(system="S", messages=[{"role": "user", "content": "x"}], philosopher=PHILO, max_tokens=300)
     assert ga.calls[0]["thinking"] == {"type": "between_tools"}
     assert ga.calls[0]["output_config"] == {"effort": "high"}
+    # between_tools can still emit a thinking block: keep room for the reply
+    assert ga.calls[0]["max_tokens"] == 300 + 1024
     p, ga, _ = provider_with("claude-opus-5-5", fake_response(), effort="max")
     p.reply(system="S", messages=[{"role": "user", "content": "x"}], philosopher=PHILO, max_tokens=300)
     assert ga.calls[0]["output_config"] == {"effort": "max"}

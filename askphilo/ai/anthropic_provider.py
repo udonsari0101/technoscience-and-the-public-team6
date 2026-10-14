@@ -29,6 +29,11 @@ THINKING_OFF = {
     "claude-haiku-5-5": {"type": "disabled"},
     "claude-sonnet-5-5": {"type": "between_tools"},
 }
+# "between_tools" is the API's thinking-off mode for Sonnet 5.5, yet a live run
+# (2026-10-14) returned a lone thinking block that used the whole budget and
+# left no reply. Those models keep the thinking headroom; tokens are billed only
+# when actually generated, so ordinary replies cost the same.
+HEADROOM_THINKING_TYPES = {"between_tools"}
 
 
 def _trim_to_sentence(text: str) -> str:
@@ -85,6 +90,8 @@ class AnthropicProvider(AIProvider):
         if thinking:
             params["thinking"] = thinking
             params["max_tokens"] = max_tokens
+            if thinking["type"] in HEADROOM_THINKING_TYPES:
+                params["max_tokens"] = max_tokens + self.thinking_headroom
             if self.effort in ("xhigh", "max"):
                 # Thinking-off modes are only accepted at effort high or below.
                 params["output_config"] = {"effort": "high"}
