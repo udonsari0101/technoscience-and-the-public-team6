@@ -88,7 +88,28 @@ def create_app(overrides: dict | None = None) -> Flask:
         app.config["AI_MODE"],
         app.config["FIREBASE_CONFIGURED"],
     )
+    if app.config["AI_MODE"] == "anthropic" and not testing:
+        _warm_ai(app)
     return app
+
+
+def _warm_ai(app: Flask) -> None:
+    """Import the SDK and build the client in the background when the worker starts.
+    On Render's small free CPU this import alone took seconds, which the first
+    reply after every deploy or restart used to wait for. No request is sent."""
+    import threading
+
+    from .ai import get_provider
+
+    def warm():
+        try:
+            provider = get_provider(app)
+            if hasattr(provider, "warm"):
+                provider.warm()
+        except Exception as exc:  # noqa: BLE001 — warming is only an optimisation
+            log.warning("AI warm-up skipped: %s", type(exc).__name__)
+
+    threading.Thread(target=warm, name="askphilo-ai-warm", daemon=True).start()
 
 
 def _configure_logging(app: Flask) -> None:

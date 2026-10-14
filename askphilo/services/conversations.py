@@ -22,6 +22,7 @@ import base64
 import logging
 import re
 import threading
+import time
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -577,17 +578,26 @@ class ConversationService:
 
     def _reply(self, user_id: str, conv: dict, user_message: dict, on_event=None) -> dict:
         conversation_id = conv["id"]
+        started = time.perf_counter()
+        timing = {}
         system, messages, philosopher, raw = self._context(user_id, conv)
+        timing["context_ms"] = round((time.perf_counter() - started) * 1000)
         if not raw or raw[-1]["role"] != "user":
             raise ChatError("nothing_to_retry", MSG_NOTHING_TO_RETRY, 409)
         # The first answer also carries a short title — inside the same request.
         want_title = user_message["message_index"] == 0 and conv.get("title_source") != "user"
         stream = bubbles.SentenceStream(lambda s: on_event("sentence", {"text": s})) if on_event else None
+        ai_started = time.perf_counter()
+
+        def feed(delta):
+            timing.setdefault("first_text_ms", round((time.perf_counter() - ai_started) * 1000))
+            stream.feed(delta)
+
         try:
             reply = self.provider.reply(system=system, messages=messages, philosopher=philosopher,
                                         max_tokens=self.settings.max_output_tokens,
                                         want_title=want_title,
-                                        **({"on_text": stream.feed} if stream else {}))
+                                        **({"on_text": feed} if stream else {}))
         except AIError as exc:
             if exc.reason != "refusal":
                 raise self._fail(user_id, conversation_id, user_message, exc.reason,
@@ -597,6 +607,7 @@ class ConversationService:
             reply = AIReply(text=MSG_REFUSAL_REPLY, provider=self.provider.name,
                             model=getattr(self.provider, "model", None) or self.provider.name,
                             usage=getattr(exc, "usage", None) or AIUsage(), stop_reason="refusal")
+        timing["ai_ms"] = round((time.perf_counter() - ai_started) * 1000)
         if stream:
             stream.finish(reply.text)  # whatever the stream hadn't finished yet
         increments = _usage_increments(self.provider, reply.usage, model=reply.model,
@@ -627,6 +638,9 @@ class ConversationService:
             raise self._fail(user_id, conversation_id, user_message, type(exc).__name__,
                              reply.usage, billed=True) from None
         self._track_day(increments, replies=1)
+        timing["total_ms"] = round((time.perf_counter() - started) * 1000)
+        log.info("reply timing conv=%s %s", conversation_id,
+                 " ".join(f"{k}={v}" for k, v in timing.items()))
         assistant_message = stored[0]
         count = assistant_message["message_index"] + 1
         return {
@@ -636,6 +650,7 @@ class ConversationService:
             "status": limit_status(count, self.settings),
             "summary_due": self.summary_due(conv, count),
             "title": new_title,
+            "timing": timing,
         }
 
     # ---- context compression ---------------------------------------------------------

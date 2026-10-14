@@ -79,6 +79,14 @@ class AnthropicProvider(AIProvider):
                     )
         return self._client
 
+    def warm(self) -> None:
+        """Load the SDK (and its streaming helpers) and create the client; no request."""
+        if not self.api_key:
+            return
+        import anthropic.lib.streaming  # noqa: F401
+
+        _ = self.client
+
     # ----------------------------------------------------------------- request
     def _call(self, *, model: str, system: str, messages: list[dict], max_tokens: int,
               cache: bool = True, on_text=None):

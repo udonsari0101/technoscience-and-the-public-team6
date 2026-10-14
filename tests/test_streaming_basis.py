@@ -184,3 +184,17 @@ def test_chat_page_has_the_daily_gauge(logged_in):
     html = logged_in.get("/chat/plato").get_data(as_text=True)
     assert 'data-daily' in html and 'data-remaining="200"' in html and 'data-limit="200"' in html
     assert "daily-gauge-fill" in html
+
+
+def test_reply_reports_phase_timing(logged_in):
+    done = sse_events(stream_create(logged_in))[-1][1]
+    assert {"context_ms", "first_text_ms", "ai_ms", "total_ms"} <= set(done["timing"])
+
+
+def test_warm_up_builds_the_client_without_a_request():
+    from askphilo.ai.anthropic_provider import AnthropicProvider
+
+    provider = AnthropicProvider(api_key="sk-ant-test-not-real", model="claude-sonnet-5-5")
+    provider.warm()  # imports the SDK and creates the client; constructing it sends nothing
+    assert provider._client is not None
+    AnthropicProvider(api_key="", model="x").warm()  # no key: nothing to warm, no error
