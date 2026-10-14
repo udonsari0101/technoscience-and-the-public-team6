@@ -112,7 +112,8 @@
 - [x] `role: admin` + `/admin` 대시보드 (DB에서 매 요청 권한 확인, 비관리자 404, 로그인 시 대시보드로 이동)
 - [x] 대시보드: 오늘·이번 달 API 사용량(`usage_daily`), 예상 비용·남은 예산(환경변수 단가·예산), 서비스 상한 잔여, 최근 14일, 사용자 목록
 - [x] `scripts/create_admin.py`(비밀번호는 환경변수·입력으로만), `scripts/wipe_users.py`(dry run 기본)
-- [ ] 배포 후 기존 사용자 삭제 + admin 계정 생성
+- [x] 배포 후 기존 사용자 삭제(1명) + admin 계정 생성 (production Firestore, 로그인 시 `/admin` 이동 확인)
+- [x] 대시보드 production 503 수정: `usage_daily`를 문서 ID 내림차순으로 조회하려면 Firestore index가 필요 → 최근 62일 날짜를 문서 ID로 직접 읽기(`get_all`)로 변경, 실제 Firestore smoke 통과
 - [!] 비밀번호 저장 방식 변경 요청 — 작업 도구의 자동 권한 검사에서 차단되어 보류 (저장·확인 로직은 `services/passwords.py`로 모아 둠)
 - [ ] 짧은 live 확인 (Sonnet 5.5, 철학자별 1회)
 
@@ -172,7 +173,8 @@
 - Opus 5.5는 thinking을 끌 수 없음 → `max_tokens = MAX_OUTPUT_TOKENS + ANTHROPIC_THINKING_HEADROOM_TOKENS`. Haiku/Sonnet 5.5는 thinking off + 300.
 - Raw context는 10~19개(요약되지 않은 메시지 전부, 빠지는 구간 없음). 요약은 메시지 20, 30, 40…에서 실행.
 - 가입 후 바로 로그인(Home 이동)으로 흐름을 줄임 — spec의 Signup → Login → Home 대비 의도적 단축 (변경 쉬움).
-- 일일/시간당 상한은 in-process(1 worker) 기준이라 재배포·재시작 시 초기화됨.
+- 분당·전체 시간당 상한은 in-process(1 worker) 기준이라 재배포·재시작 시 초기화됨. 사용자별 하루 질문 한도는 Firestore(`daily_usage`)에 저장돼 유지됨.
+- d6840af 배포가 Render에서 실패(15분 후 failure, 로컬 테스트·production 설정 기동은 정상) → 다음 commit으로 재배포.
 - RaiDrive 쓰기 오류로 todo.md가 0바이트로 잘린 적 있음 → HEAD + 변경분으로 복원, 이후 로컬 작성 후 checksum 검증하며 복사.
 - 로컬 브라우저 테스트는 5060/5061(SIP) 포트를 쓰면 Chromium·WebKit이 접속을 거부함 → 5000/5070 사용.
 - Playwright WebKit 스크린샷이 주입하는 style을 CSP가 차단해 콘솔 오류가 남음 → 검사에서 제외(앱 문제 아님).
