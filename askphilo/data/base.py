@@ -103,8 +103,9 @@ class Repository:
         """Add counters to usage_daily/{day} (KST date)."""
         raise NotImplementedError
 
-    def list_usage_days(self, limit: int = 31) -> list[dict]:
-        """Most recent days first: [{"day": "2026-10-14", **counters}]."""
+    def get_usage_days(self, days: list[str]) -> list[dict]:
+        """Counters for the given KST dates (missing days omitted), newest first:
+        [{"day": "2026-10-14", **counters}]. Direct reads — no index needed."""
         raise NotImplementedError
 
     # ---- conversations ---------------------------------------------------

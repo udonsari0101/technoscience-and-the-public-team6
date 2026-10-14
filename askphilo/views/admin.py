@@ -14,6 +14,8 @@ from flask import Blueprint, abort, current_app, g, render_template
 from ..auth import login_required
 from ..data import get_repository
 from ..ratelimit import get_limiter
+from datetime import date, timedelta
+
 from ..services.quota import today_kst
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -64,7 +66,8 @@ def dashboard():
     today = today_kst()
     month = today[:7]
 
-    days = repo.list_usage_days(limit=62)
+    start = date.fromisoformat(today)
+    days = repo.get_usage_days([(start - timedelta(days=i)).isoformat() for i in range(62)])
     today_totals = _sum([d for d in days if d["day"] == today])
     month_totals = _sum([d for d in days if d["day"].startswith(month)])
     month_cost = estimate_cost(month_totals, cfg)

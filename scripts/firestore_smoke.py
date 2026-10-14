@@ -35,6 +35,7 @@ def main() -> int:
         return 2
     repo = FirestoreRepository(str(creds))
     username = f"zz_smoke_{secrets.token_hex(3)}"
+    usage_key = f"zz-smoke-{secrets.token_hex(3)}"
     user_id = str(uuid.uuid4())
     conv_id = str(uuid.uuid4())
     steps = []
@@ -91,6 +92,20 @@ def main() -> int:
         assert conv["usage"]["mock_calls"] == 1 and conv["summary_version"] == 1
         listed = step("list_conversations", lambda: repo.list_conversations(user_id, limit=5))
         assert listed and listed[0]["id"] == conv_id
+        # daily allowance: reserve / limit / refund
+        assert repo.reserve_daily_message(user_id, "2000-01-01", 2) == 1
+        assert repo.reserve_daily_message(user_id, "2000-01-01", 2) == 2
+        assert repo.reserve_daily_message(user_id, "2000-01-01", 2) is None
+        step("refund_daily_message", lambda: repo.refund_daily_message(user_id, "2000-01-01"))
+        assert repo.get_daily_usage(user_id, "2000-01-01") == 1
+        # service-wide daily usage (index-free reads) — uses a throw-away key, removed below
+        step("record_usage_day", lambda: repo.record_usage_day(usage_key, {"replies": 2, "api_calls": 3}))
+        repo.record_usage_day(usage_key, {"replies": 1})
+        rows = step("get_usage_days", lambda: repo.get_usage_days([usage_key]))
+        assert rows == [{"day": usage_key, "replies": 3, "api_calls": 3}], rows
+        listed_users = step("list_users", lambda: repo.list_users(500))
+        mine = next(u for u in listed_users if u["id"] == user_id)
+        assert "password_hash" not in mine and mine["daily_usage"]["count"] == 1
         step("set_user_memory", lambda: repo.set_user_memory(user_id, {"preferences": ["짧은 답변"]}))
         assert repo.get_user_memory(user_id)["preferences"] == ["짧은 답변"]
         step("delete_user_memory", lambda: repo.delete_user_memory(user_id))
@@ -108,6 +123,7 @@ def main() -> int:
         client = repo.client
         client.recursive_delete(client.collection("users").document(user_id))
         client.collection("username_index").document(username).delete()
+        client.collection("usage_daily").document(usage_key).delete()
         leftover = client.collection("users").document(user_id).get().exists or \
             client.collection("username_index").document(username).get().exists
         print("cleanup:", "LEFTOVER DATA!" if leftover else "ok (no test data left)")

@@ -97,10 +97,10 @@ class MemoryRepository(Repository):
                 if value:
                     row[key] = row.get(key, 0) + value
 
-    def list_usage_days(self, limit=31):
+    def get_usage_days(self, days):
         with self._lock:
-            days = sorted(self.usage_days, reverse=True)[:limit]
-            return [{"day": d, **copy.deepcopy(self.usage_days[d])} for d in days]
+            found = [d for d in days if d in self.usage_days]
+            return [{"day": d, **copy.deepcopy(self.usage_days[d])} for d in sorted(found, reverse=True)]
 
     # ---- conversations -------------------------------------------------
     def create_conversation(self, user_id, conversation_id, data):

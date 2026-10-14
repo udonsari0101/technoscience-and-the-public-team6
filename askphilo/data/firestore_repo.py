@@ -170,13 +170,11 @@ class FirestoreRepository(Repository):
             self.client.collection("usage_daily").document(day).set(updates, merge=True)
 
     @_guard
-    def list_usage_days(self, limit=31):
-        from google.cloud import firestore as gcf
-        from google.cloud.firestore_v1.field_path import FieldPath
-
-        query = (self.client.collection("usage_daily")
-                 .order_by(FieldPath.document_id(), direction=gcf.Query.DESCENDING).limit(limit))
-        return [{"day": s.id, **s.to_dict()} for s in query.stream(timeout=20)]
+    def get_usage_days(self, days):
+        collection = self.client.collection("usage_daily")
+        snaps = self.client.get_all([collection.document(d) for d in days], timeout=20)
+        rows = [{"day": s.id, **s.to_dict()} for s in snaps if s.exists]
+        return sorted(rows, key=lambda r: r["day"], reverse=True)
 
     # ---- conversations -------------------------------------------------------------
     @_guard
