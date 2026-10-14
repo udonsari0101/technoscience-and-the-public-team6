@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from flask import Blueprint, current_app, flash, g, redirect, render_template, url_for
+from flask import Blueprint, current_app, flash, g, jsonify, redirect, render_template, request, url_for
 
 from ..auth import current_user, login_required
 from ..data import get_repository
+from ..services.preferences import REPLY_SPEEDS, reply_speed
 from ..services.quota import daily_status, today_kst
 
 bp = Blueprint("pages", __name__)
@@ -29,7 +30,27 @@ def _daily(repo) -> dict:
 def settings():
     repo = get_repository()
     memory = repo.get_user_memory(g.user["uid"]) or {}
-    return render_template("settings.html", memory=memory, daily=_daily(repo))
+    return render_template("settings.html", memory=memory, daily=_daily(repo),
+                           speeds=REPLY_SPEEDS, reply_speed=reply_speed(repo.get_user(g.user["uid"])))
+
+
+@bp.post("/settings/reply-speed")
+@login_required
+def set_reply_speed():
+    """빠름/보통/느림: the pause between a reply's bubbles (saved on the account)."""
+    wants_json = request.is_json
+    body = request.get_json(silent=True) if wants_json else request.form
+    value = body.get("speed") if isinstance(body, dict) else None
+    if not isinstance(value, str) or value not in REPLY_SPEEDS:
+        if wants_json:
+            return jsonify(ok=False, error="bad_speed", message="속도를 다시 골라 주세요."), 400
+        flash("속도를 다시 골라 주세요.", "error")
+        return redirect(url_for("pages.settings") + "#speed")
+    get_repository().set_user_fields(g.user["uid"], {"reply_speed": value})
+    if wants_json:
+        return jsonify(ok=True, speed=value)
+    flash("답변 속도를 바꿨어요.", "success")
+    return redirect(url_for("pages.settings") + "#speed")
 
 
 @bp.post("/settings/memory/clear")

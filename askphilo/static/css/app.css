@@ -2248,3 +2248,11 @@ html.kb-open .chat-layout {
     transform: translateY(-18px);
   }
 }
+
+/* Settings: reply speed */
+.settings-save {
+  margin: 8px 10px 4px;
+}
+.settings-note:empty {
+  display: none;
+}

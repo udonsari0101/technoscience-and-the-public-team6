@@ -39,6 +39,35 @@
     });
   });
 
+  // Reply speed (Settings): saved to the account right away; the button is the no-JS fallback.
+  document.querySelectorAll("[data-reply-speed-form]").forEach(function (form) {
+    var status = form.querySelector("[data-reply-speed-status]");
+    var timer = null;
+    form.querySelectorAll("[data-js-hide]").forEach(function (el) { el.hidden = true; });
+    function say(text) {
+      if (!status) return;
+      status.textContent = text;
+      clearTimeout(timer);
+      timer = setTimeout(function () { status.textContent = ""; }, 2500);
+    }
+    form.addEventListener("change", function (event) {
+      if (!event.target.matches('input[name="speed"]')) return;
+      var token = (document.querySelector('meta[name="csrf-token"]') || {}).content || "";
+      fetch(form.action, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": token },
+        body: JSON.stringify({ speed: event.target.value }),
+      })
+        .then(function (res) {
+          return res.json().catch(function () { return {}; }).then(function (data) {
+            say(res.ok && data.ok ? "저장했어요" : (data.message || "저장하지 못했어요. 다시 시도해 주세요."));
+          });
+        })
+        .catch(function () { say("저장하지 못했어요. 다시 시도해 주세요."); });
+    });
+  });
+
   // Enable colour transitions only after first paint (no flash on load)
   requestAnimationFrame(function () {
     document.body.classList.add("theme-ready");

@@ -37,6 +37,21 @@
     </div>
   </section>
 
+  <section class="settings-group" id="speed" aria-labelledby="speed-title">
+    <h2 id="speed-title" class="settings-label">답변 속도</h2>
+    <form class="settings-card" method="post" action="{{ url_for('pages.set_reply_speed') }}" data-reply-speed-form>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <fieldset class="segmented">
+        <legend class="sr-only">답변 말풍선이 이어지는 속도</legend>
+        {% for value, label in speeds.items() %}
+        <label><input type="radio" name="speed" value="{{ value }}" {% if value == reply_speed %}checked{% endif %}><span>{{ label }}</span></label>
+        {% endfor %}
+      </fieldset>
+      <button type="submit" class="btn btn-secondary btn-sm settings-save" data-js-hide>저장</button>
+      <p class="settings-note" data-reply-speed-status role="status" aria-live="polite"></p>
+    </form>
+  </section>
+
   <section class="settings-group" aria-labelledby="data-title">
     <h2 id="data-title" class="settings-label">데이터</h2>
     <div class="settings-card">

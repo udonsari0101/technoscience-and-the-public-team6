@@ -33,6 +33,7 @@
         data-conversation-id="{{ conversation.id if conversation else '' }}"
         data-philosopher-id="{{ p.id }}"
         data-philosopher-name="{{ p.name }}"
+        data-reply-speed="{{ reply_speed }}"
         data-oldest-index="{{ messages[0]['index'] if messages else 0 }}"
         data-max-chars="{{ max_chars }}">
     <header class="chat-header">

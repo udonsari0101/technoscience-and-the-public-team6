@@ -24,6 +24,7 @@ from .. import background
 from ..ai import get_provider
 from ..data import DataError
 from ..services import images as image_files
+from ..services.preferences import reply_speed
 from ..auth import login_required
 from ..data import get_repository
 from ..philosophers import PHILOSOPHERS, get_philosopher, philosopher_css
@@ -185,7 +186,7 @@ def start(philosopher_id):
     return render_template(
         "chat.html", p=p, conversation=None, messages=[], has_more=False, reply_state=None,
         status=limit_status(0, svc.settings), sidebar=_sidebar(), max_chars=svc.settings.max_user_chars,
-        daily=svc.daily(g.user["uid"]),
+        daily=svc.daily(g.user["uid"]), reply_speed=_reply_speed(),
     )
 
 
@@ -207,8 +208,12 @@ def conversation(conversation_id):
         reply_state=svc.reply_state(g.user["uid"], conv),
         status=limit_status(conv.get("message_count", 0), svc.settings),
         sidebar=_sidebar(active=conversation_id), max_chars=svc.settings.max_user_chars,
-        daily=svc.daily(g.user["uid"]),
+        daily=svc.daily(g.user["uid"]), reply_speed=_reply_speed(),
     )
+
+
+def _reply_speed() -> str:
+    return reply_speed(get_repository().get_user(g.user["uid"]))
 
 
 def _sidebar(active: str | None = None) -> dict:

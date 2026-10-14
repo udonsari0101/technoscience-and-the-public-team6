@@ -60,6 +60,14 @@
   };
   // Same bubble rule as askphilo/services/bubbles.py
   var MIN_BUBBLE_CHARS = 12;
+  // Pause before each next bubble (ms): base + per character, kept within min..max.
+  // Chosen in Settings → 답변 속도 (askphilo/services/preferences.py).
+  var PACE = {
+    fast: { base: 500, perChar: 15, min: 700, max: 1400 },
+    normal: { base: 900, perChar: 30, min: 1300, max: 2600 },
+    slow: { base: 1400, perChar: 45, min: 2000, max: 3800 }
+  };
+  var pace = PACE[root.getAttribute("data-reply-speed")] || PACE.normal;
 
   // ---------------------------------------------------------------- time (Seoul)
   var clockFmt = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "numeric", minute: "2-digit" });
@@ -493,7 +501,7 @@
   // Shows a reply bubble by bubble: the first one as soon as it is ready, then a
   // short "typing" pause before each next one. Calls onDone when everything is shown.
   function gapFor(text) {
-    return Math.max(800, Math.min(1700, 500 + text.length * 20));
+    return Math.max(pace.min, Math.min(pace.max, pace.base + text.length * pace.perChar));
   }
   function createPlayer(onDone) {
     var p = { queue: [], pending: "", shown: [], final: null, row: null, body: null,

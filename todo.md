@@ -165,6 +165,8 @@
 - [x] 버그: Anthropic 안전 거절(출력 0 token)이 "답변을 가져오지 못했어요"+다시 시도로 보이던 문제 → 짧은 거절 답으로 저장(재시도·재과금 없음). 원인: 문자열 출력 퍼즐 메시지
 - [x] 보안 테스트 구조(사용자 비용 원칙): unit / mock LLM(`test_security_mock.py`) / live 5개(`RUN_LIVE_LLM_SECURITY_TESTS=true`일 때만, 호출 수·예상 비용 출력). live 1회 실행 5/5 통과, 약 $0.042
 - [x] 검증: pytest 286(+live 5 skip), 브라우저 E2E(Chromium·WebKit) 스트리밍·잠금·시간·막대·근거 26/26
+- [x] 설정 → 답변 속도 빠름/보통/느림(기본 보통): 말풍선 사이 쉬는 시간 0.7~1.4 / 1.3~2.6 / 2.0~3.8초(길이 비례). 누르는 즉시 계정에 저장(JS 없으면 저장 버튼), 채팅 화면이 `data-reply-speed`로 받음
+- [x] 검증: pytest 296(+live 5 skip), 브라우저(Chromium·WebKit) 속도 저장·새로고침 유지·실측 간격 18/18, 기존 스트리밍 E2E 26/26
 
 ## UI / UX
 - [x] Theme: System / Light / Dark (localStorage, headless 브라우저로 저장·해제 확인)
