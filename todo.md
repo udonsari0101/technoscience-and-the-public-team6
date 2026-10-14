@@ -93,7 +93,7 @@
 - [x] 기본 모델 `claude-opus-5-5`, `ANTHROPIC_EFFORT=low`, thinking headroom
 - [x] 실제 Anthropic 호출 검증 (사용자 승인, `claude-sonnet-5-5`, local · in-memory): `live_eval.py --long` 19회 + style 조정 후 8회. 시나리오 A~G·안전 규칙 준수, 요약 1회(20 메시지), memory 갱신, prompt caching 동작(캐시 안 된 입력 ≈4 token/호출), 총 약 $0.12
 - [x] Style prompt 조정: 한 문단 2~4문장·250자·질문 1개 (평균 출력 250→202 token, 300 상한 도달 감소)
-- [ ] Production `AI_MODE=anthropic` 전환 — 사용자가 Render Dashboard에서 결정 (`ANTHROPIC_MODEL`도 함께 설정)
+- [x] Production `AI_MODE=anthropic` 전환 (사용자 요청) — `render.yaml`에 `AI_MODE=anthropic`, `ANTHROPIC_MODEL=claude-sonnet-5-5` 고정. 모델은 사용자 위임으로 Haiku/Sonnet 실측 비교 후 Sonnet(원칙 준수 13/16 vs 5/16, 답변 약 $0.004)
 
 ## 오늘의 질문 한도 표시
 - [x] 일일 사용량을 Firestore user 문서에 저장 (KST 자정 초기화, transaction 예약 + 실패 시 환불)
@@ -139,7 +139,8 @@
 - [x] 대시보드 'API 크레딧': 충전 금액·서비스 밖 사용액 입력(`settings/billing`, admin만, CSRF), 남은 금액·평균 비용·남은 답변 수. 월 예산 환경변수는 제거
 - [x] 일별·사용자별 비용 열, 실제 API 모드일 때 모델 단가 표시
 - [x] 테스트(가격 계산, 기록, 화면, 입력 검증, 권한) + 실제 Firestore smoke(누적 문서는 임시 key로만)
-- [x] 서비스 밖 사용액 추정: 지금까지 live 평가(Sonnet 5.5) 약 $0.28 — 27회 $0.118 + 16회 $0.072 + 16회 $0.063 + 디버그 4회 약 $0.02
+- [x] 서비스 밖 사용액 추정: 지금까지 live 평가(Sonnet 5.5) 약 $0.28 — 27회 $0.118 + 16회 $0.072 + 16회 $0.063 + 디버그 4회 약 $0.02 (이후 Haiku 비교 16회 $0.004 추가)
+- [x] 관리자 대시보드에 API 키 설정 여부 표시(값은 표시하지 않음)
 
 ## UI / UX
 - [x] Theme: System / Light / Dark (localStorage, headless 브라우저로 저장·해제 확인)
@@ -193,7 +194,7 @@
 - commit author는 GitHub noreply 주소 사용 (public repo에 개인 이메일 노출 방지).
 - RaiDrive(WebDAV) 마운트가 파일 읽기/쓰기를 간헐적으로 실패시킴(빈 module import, `No such device`, `Permission denied`) → 로컬 검증은 checksum 검증된 로컬 mirror에서 실행, commit 전 staged blob과 파일 내용 대조.
 - `/new`, `/c/<id>`는 상담 기능 commit 전까지 "곧 열려요" 화면이었음 → 상담 기능으로 교체 완료.
-- render.yaml의 `AI_MODE`/`ANTHROPIC_MODEL`을 `sync: false`로 변경 → Dashboard 값이 우선. 최초 Blueprint 생성 때 `ANTHROPIC_MODEL=claude-haiku-5-5`가 들어갔으므로 전환 전 Dashboard에서 원하는 모델로 설정 필요.
+- render.yaml의 `AI_MODE`/`ANTHROPIC_MODEL`을 한때 `sync: false`(Dashboard 소유)로 두었다가, 운영 전환 때 다시 render.yaml 값(anthropic / claude-sonnet-5-5)으로 고정함. `ANTHROPIC_API_KEY`만 Dashboard 소유.
 - Opus 5.5는 thinking을 끌 수 없음 → `max_tokens = MAX_OUTPUT_TOKENS + ANTHROPIC_THINKING_HEADROOM_TOKENS`. Haiku/Sonnet 5.5는 thinking off + 300.
 - Raw context는 10~19개(요약되지 않은 메시지 전부, 빠지는 구간 없음). 요약은 메시지 20, 30, 40…에서 실행.
 - 가입 후 바로 로그인(Home 이동)으로 흐름을 줄임 — spec의 Signup → Login → Home 대비 의도적 단축 (변경 쉬움).

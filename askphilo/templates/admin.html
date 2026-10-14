@@ -71,7 +71,11 @@
       <div class="stat">
         <p class="stat-label">AI 모드</p>
         <p class="stat-value stat-text">{{ 'Anthropic' if ai_mode == 'anthropic' else 'Mock' }}</p>
-        <p class="stat-sub">{{ model }}{% if ai_mode != 'anthropic' %} · 실제 API를 호출하지 않아요{% endif %}</p>
+        {% if ai_mode == 'anthropic' %}
+        <p class="stat-sub{% if not key_set %} is-warn{% endif %}">{{ model }} · {% if key_set %}API 키 설정됨{% else %}API 키 없음 — 답변이 실패해요{% endif %}</p>
+        {% else %}
+        <p class="stat-sub">{{ model }} · 실제 API를 호출하지 않아요</p>
+        {% endif %}
       </div>
     </div>
   </section>

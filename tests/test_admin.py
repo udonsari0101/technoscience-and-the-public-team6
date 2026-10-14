@@ -144,6 +144,16 @@ def test_billing_form_is_admin_only_and_csrf_protected(app, client):
     assert c.post("/admin/billing", data={"credit_usd": "20"}).status_code == 400
 
 
+def test_dashboard_shows_whether_the_api_key_is_set(app):
+    app.config.update(AI_MODE="anthropic", ANTHROPIC_MODEL="claude-sonnet-5-5", ANTHROPIC_API_KEY="")
+    c = admin_client(app)
+    html = c.get("/admin").get_data(as_text=True)
+    assert "API 키 없음" in html and "입력 $2.0" in html
+    app.config["ANTHROPIC_API_KEY"] = "sk-ant-api03-test-value"
+    html = c.get("/admin").get_data(as_text=True)
+    assert "API 키 설정됨" in html and "sk-ant-api03" not in html
+
+
 def test_credit_summary_math():
     s = credit_summary({"credit_usd": 20.0, "outside_spend_usd": 0.5},
                        {"cost_micro_usd": 1_500_000, "reply_calls": 300, "replies": 900})

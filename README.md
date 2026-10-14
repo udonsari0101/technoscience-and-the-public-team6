@@ -146,7 +146,7 @@ API 사용 원칙:
 
 | 변수 | 기본값 | 설명 |
 |---|---|---|
-| `ANTHROPIC_MODEL` | `claude-opus-5-5` | 상담 모델. 비용을 낮추려면 `claude-sonnet-5-5`나 `claude-haiku-5-5`로 바꿀 수 있습니다(품질과 비용의 trade-off) |
+| `ANTHROPIC_MODEL` | `claude-opus-5-5` | 상담 모델. **production은 `render.yaml`에서 `claude-sonnet-5-5`** (아래 모델 선택 참고). 품질과 비용의 trade-off |
 | `ANTHROPIC_EFFORT` | `low` | 짧은 상담 대화에 맞춘 낮은 thinking 강도 |
 | `MAX_OUTPUT_TOKENS` | `300` | 답변 길이 상한. Haiku 5.5는 thinking을 끄므로(`disabled`) `max_tokens`가 정확히 300입니다. Sonnet 5.5의 thinking-off 모드(`between_tools`)는 실제로 thinking block을 먼저 내보낼 때가 있어서, Opus처럼 아래 headroom을 더합니다(생성된 token만 과금) |
 | `ANTHROPIC_THINKING_HEADROOM_TOKENS` | `1024` | **Opus 5.5는 thinking을 끌 수 없고**, thinking도 `max_tokens` 안에서 계산됩니다. 그래서 Opus에서는 `max_tokens = 300 + 1024`입니다. 보이는 답변은 prompt(상황에 따라 80~200자)로 짧게 유지하고, 잘린 답변은 마지막 완결 문장까지만 저장합니다 |
@@ -155,6 +155,16 @@ API 사용 원칙:
 | `ANTHROPIC_SUMMARY_MODEL` | (비움 = 상담 모델) | 요약에 쓸 모델 |
 
 ### 실제 모델 검증 기록
+
+**운영 모델 선택 (2026-10-14):** 같은 16개 시나리오로 Haiku 5.5와 Sonnet 5.5를 비교했습니다.
+
+| | Sonnet 5.5 | Haiku 5.5 |
+|---|---|---|
+| 통과 | 13/16 (나머지는 길이 조금 초과) | 5/16 |
+| 주요 문제 | — | 16개 중 8개 답변에서 철학자 이름을 직접 말함("아리스토텔레스라면"), 길이 초과, 질문 2개 |
+| 비용 | 답변 1개 약 $0.004 | 약 $0.0002 |
+
+Haiku는 상담 원칙(이름을 내세우지 않기, 짧게)을 자주 어겨서, 원칙을 지키면서 크레딧 $20으로 약 5,000개 답변이 가능한 Sonnet 5.5를 운영 모델로 정했습니다.
 
 2026-10-14, `claude-sonnet-5-5`, `scripts/live_eval.py`(local, in-memory 저장, 총 27회 호출, 약 $0.12)
 
@@ -336,8 +346,8 @@ SDK logger(`anthropic`, `httpx`, `httpcore` 등)는 WARNING 이상으로 고정�
 
 - **Gunicorn**: `gunicorn.conf.py`에서 worker 1개, gthread 8개, timeout 120초로 설정합니다. Render 기본 `GUNICORN_CMD_ARGS`의 `--preload`는 override합니다.
 - **Secret File**: Dashboard → Environment → Secret Files에 `firebase-service-account.json`을 올립니다. Blueprint로는 등록할 수 없습니다.
-- `AI_MODE`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`은 `sync: false`라서 **Render Dashboard 값이 우선**합니다. Dashboard에서 `AI_MODE=anthropic`으로 바꿔도 이후 push가 되돌리지 않습니다.
-  - Blueprint를 처음 만들 때 `ANTHROPIC_MODEL=claude-haiku-5-5`가 들어갔습니다. 실제 호출을 켜기 전에 Dashboard에서 원하는 모델로 확인해 주세요.
+- **production은 실제 API로 운영합니다.** `render.yaml`에 `AI_MODE=anthropic`, `ANTHROPIC_MODEL=claude-sonnet-5-5`가 들어 있고, push하면 Blueprint sync로 적용됩니다. 모든 API 호출을 멈추려면 `AI_MODE`를 `mock`으로 바꿔 push합니다.
+  - `ANTHROPIC_API_KEY`만 `sync: false`(Render Dashboard에서 입력)입니다. 관리자 대시보드의 'AI 모드'에 키가 설정됐는지(값은 보이지 않음) 표시됩니다.
 - Custom domain `askphilo.kro.kr`: `domains`에 선언되어 있고, DNS CNAME → `askphilo.onrender.com`입니다.
 - Free instance는 15분 동안 요청이 없으면 잠들고, 다시 깨어나는 데 약 1분이 걸립니다.
 

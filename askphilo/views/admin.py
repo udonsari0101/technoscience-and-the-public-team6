@@ -144,6 +144,7 @@ def dashboard():
         daily_limit=cfg["CHAT_MESSAGES_PER_DAY"],
         ai_mode=cfg["AI_MODE"],
         model=model if live else "mock",
+        key_set=bool(cfg["ANTHROPIC_API_KEY"]),  # only whether it is set, never the key
         price=price_for(model, overrides=overrides_from_config(cfg)) if live else None,
     )
 

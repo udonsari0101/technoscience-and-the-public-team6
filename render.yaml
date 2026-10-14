@@ -27,15 +27,16 @@ services:
         generateValue: true
       - key: FIREBASE_CREDENTIALS_PATH
         value: /etc/secrets/firebase-service-account.json
-      # AI_MODE / ANTHROPIC_MODEL are owned by the Render dashboard after the
-      # first Blueprint sync (sync: false), so switching to AI_MODE=anthropic
-      # there is never reverted by a later push. Initial value: AI_MODE=mock.
+      # Production runs on the real API. Sonnet 5.5 was chosen after live
+      # evaluations on 2026-10-14: it followed the counselling rules while Haiku
+      # 5.5 often named the philosopher and ran long; ~$0.004 per reply.
+      # Set AI_MODE to mock here to stop all API calls.
       - key: AI_MODE
-        sync: false
+        value: anthropic
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: ANTHROPIC_MODEL
-        sync: false
+        value: claude-sonnet-5-5
       - key: CONTROLLER_VERSION
         value: v1
       - key: MAX_CONTEXT_MESSAGES
