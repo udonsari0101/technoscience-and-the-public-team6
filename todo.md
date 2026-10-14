@@ -151,6 +151,7 @@
 - [x] 휴지통: 휴지통으로 이동 → 되살리기 / 영구 삭제(메시지·사진 포함) / 비우기, 30일 뒤 자동 영구 삭제, 설정·기록에서 링크
 - [x] 버그: 새 대화가 사이드바에 새로고침 전까지 안 보이던 문제 → 보내자마자 맨 위에 추가·제목 갱신
 - [x] 검증: pytest 267, 브라우저 E2E(Chromium·WebKit) 30/31(WebKit 뷰포트 경고 1개는 앱 오류 아님), ui_check 44/44, device_check 65/65, a11y 0, 로컬 smoke 28/28, live(Haiku 사진 읽기 + Sonnet 답변)
+- [x] production(6004120): 사진 업로드·전송·표시·휴지통·영구 삭제 10/10, smoke 29/29(실제 API), 관리자 크레딧 서비스 밖 사용액 $0.40으로 갱신
 
 ## UI / UX
 - [x] Theme: System / Light / Dark (localStorage, headless 브라우저로 저장·해제 확인)
