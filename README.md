@@ -66,7 +66,7 @@ AskPhilo에서는 네 명의 철학자 중 한 명을 골라 친구와 이야기
 ## 함께 이야기할 철학자
 
 | 철학자 | 함께 살펴볼 고민 |
-| --- | --- |
+| :---: | --- |
 | <img src="askphilo/static/img/philosophers/plato.svg" width="64" height="64" alt="플라톤 캐릭터"><br>**플라톤** | 사랑에서 진정으로 바라는 것과 관계의 가치 |
 | <img src="askphilo/static/img/philosophers/aristotle.svg" width="64" height="64" alt="아리스토텔레스 캐릭터"><br>**아리스토텔레스** | 좋은 관계를 만드는 습관과 반복되는 행동 |
 | <img src="askphilo/static/img/philosophers/epicurus.svg" width="64" height="64" alt="에피쿠로스 캐릭터"><br>**에피쿠로스** | 진짜 원하는 것과 불안에서 비롯된 욕구 |
