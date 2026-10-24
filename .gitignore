@@ -38,5 +38,13 @@ Thumbs.db
 *.log
 instance/
 
-# local UI check output
-ui-shots/
+# Local work notes and scratch files
+/todo.md
+/scratchpad/
+/tmp/
+
+# Local browser check output
+/ui-shots/
+/device-shots/
+/playwright-report/
+/test-results/
